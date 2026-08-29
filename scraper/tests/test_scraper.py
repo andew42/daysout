@@ -136,6 +136,34 @@ class ScraperTest(unittest.TestCase):
         self.assertEqual(
             self.db.execute("SELECT COUNT(*) FROM events").fetchone()[0], 1)
 
+    def test_bounded_run_visits_newest_pages(self):
+        """A stale page first in the sitemap must not crowd out a current one."""
+        sitemap = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://www.nationaltrust.org.uk/visit/wiltshire/stourhead/events/old-fete</loc>
+       <lastmod>2024-05-01</lastmod></url>
+  <url><loc>https://www.nationaltrust.org.uk/visit/wiltshire/stourhead/events/garden-walk</loc>
+       <lastmod>2026-08-27</lastmod></url>
+  <url><loc>https://www.nationaltrust.org.uk/visit/wiltshire/stourhead</loc>
+       <lastmod>2026-08-27</lastmod></url>
+</urlset>"""
+        stale_page = """<html><head><script type="application/ld+json">
+        {"@context": "https://schema.org", "@type": "WebPage", "name": "Old fete"}
+        </script></head><body></body></html>"""
+
+        fetcher = FakeFetcher({
+            "https://www.nationaltrust.org.uk/sitemap.xml": sitemap,
+            "https://www.nationaltrust.org.uk/visit/wiltshire/stourhead": PLACE_PAGE,
+            "https://www.nationaltrust.org.uk/visit/wiltshire/stourhead/events/garden-walk": EVENT_PAGE,
+            "https://www.nationaltrust.org.uk/visit/wiltshire/stourhead/events/old-fete": stale_page,
+        })
+
+        # Only one event page may be fetched: it must be the current one.
+        ok, message = run_source(self.db, fetcher, NationalTrust(), max_pages=1)
+        self.assertTrue(ok, message)
+        titles = [r[0] for r in self.db.execute("SELECT title FROM events")]
+        self.assertEqual(titles, ["Guided garden walk"])
+
     def test_sitemap_lastmod_orders_newest_first(self):
         sitemap = """<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">

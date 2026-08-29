@@ -20,8 +20,8 @@ on:
   workflow_dispatch:
     inputs:
       scrape_max_pages:
-        description: "Pages per source for the verification scrape (0 = skip)"
-        default: "5"
+        description: "Scrape scope: 'full', 'skip', or a page limit per source"
+        default: "full"
 
 jobs:
   deploy:
@@ -62,20 +62,24 @@ jobs:
         # a partial one, so it's safe to run every deploy.
         run: sudo /opt/daysout/setup/get-tiles.sh --data-dir /var/lib/daysout
 
-      - name: Verification scrape
-        # inputs is empty on workflow_run triggers, so gate in shell rather
-        # than a step condition; default 5 pages per source.
+      - name: Scrape
+        # A full crawl by default: only a complete run gathers every
+        # property and every current event, and only it may purge rows that
+        # have gone. It costs ~500 polite requests the first time each day;
+        # the fetcher's cache makes later deploys cheap.
+        # inputs is empty on workflow_run triggers, so gate in shell.
         continue-on-error: true
         env:
-          MAX_PAGES: ${{ inputs.scrape_max_pages || '5' }}
+          MAX_PAGES: ${{ inputs.scrape_max_pages || 'full' }}
         run: |
-          if [ "$MAX_PAGES" = "0" ]; then
-            echo "scrape skipped (scrape_max_pages=0)"
-            exit 0
-          fi
           cd /opt/daysout/scraper
+          case "$MAX_PAGES" in
+            skip) echo "scrape skipped"; exit 0 ;;
+            full|"") LIMIT="" ;;
+            *) LIMIT="--max-pages $MAX_PAGES" ;;
+          esac
           sudo env DAYSOUT_DATA=/var/lib/daysout \
-            python3 -m daysout_scraper --max-pages "$MAX_PAGES" --keep-seed
+            python3 -m daysout_scraper $LIMIT --keep-seed
 
       - name: Diagnose map tiles
         # The style's 71 layers reference source-layers earth/landcover/

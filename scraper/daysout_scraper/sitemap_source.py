@@ -63,15 +63,24 @@ class SitemapJsonLdSource:
         return url.rstrip("/").rsplit("/", 1)[-1]
 
     def scrape(self, fetcher, max_pages=0):
-        """Yields ('place', dict) and ('event', dict) tuples."""
-        urls = {"place": [], "event": []}
+        """Yields ('place', dict) and ('event', dict) tuples.
+
+        Pages are visited newest-first (by sitemap lastmod). A full crawl
+        covers everything either way, but a bounded run must look at what
+        the site publishes *now*: sitemap order tends to start with pages
+        that are years stale, whose events are long past.
+        """
+        dated = {"place": [], "event": []}
         for sitemap in self.sitemaps:
-            for url in sitemap_urls(fetcher, sitemap):
+            for url, lastmod in sitemap_urls(fetcher, sitemap, with_lastmod=True):
                 kind = self.classify(url)
-                if kind in urls:
-                    urls[kind].append(url)
+                if kind in dated:
+                    dated[kind].append((lastmod, url))
         log.info("%s: %d place pages, %d event pages",
-                 self.name, len(urls["place"]), len(urls["event"]))
+                 self.name, len(dated["place"]), len(dated["event"]))
+
+        urls = {kind: [url for _, url in sorted(pages, reverse=True)]
+                for kind, pages in dated.items()}
         if max_pages:
             urls = {kind: pages[:max_pages] for kind, pages in urls.items()}
 
