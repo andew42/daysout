@@ -120,6 +120,21 @@ class ScraperTest(unittest.TestCase):
         self.assertEqual(
             self.db.execute("SELECT COUNT(*) FROM events").fetchone()[0], 0)
 
+    def test_unreachable_sitemap_purges_nothing(self):
+        run_source(self.db, fixture_fetcher(), NationalTrust())
+
+        class DeadFetcher:
+            def get(self, url):
+                raise OSError("network unreachable")
+
+        ok, _ = run_source(self.db, DeadFetcher(), NationalTrust())
+        self.assertFalse(ok)
+        # Everything from the good run survives the failed one.
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM destinations").fetchone()[0], 1)
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM events").fetchone()[0], 1)
+
     def test_seed_purged_after_real_data(self):
         self.db.execute(
             "INSERT INTO destinations (name, category, lat, lon, source, source_id,"

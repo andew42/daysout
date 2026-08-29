@@ -32,6 +32,15 @@ def run_source(db, fetcher, source, max_pages=0):
                 pending_events.append(item)
         db.commit()
 
+        # A run that found no places at all means the sitemap was unreachable
+        # or the URL patterns no longer match — never a genuinely empty
+        # source. Purging on that would wipe good data on a network blip.
+        if places == 0:
+            message = "no places found (sitemap unreachable or URL patterns wrong); nothing purged"
+            log.warning("%s: %s", source.name, message)
+            dbmod.finish_run(db, run_id, ok=False, message=message)
+            return False, message
+
         # Events last so every place of this run is available to link against.
         for event in pending_events:
             events += 1
