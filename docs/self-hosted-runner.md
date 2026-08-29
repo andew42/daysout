@@ -37,9 +37,10 @@ The runner should appear as **Idle** on the Runners page.
 
 ## 3. Security settings (public repo + self-hosted runner)
 
-The deploy workflow is `workflow_dispatch`-only, so it can only be
-triggered by someone with write access — never by a fork or PR. Belt and
-braces, in **Settings → Actions → General** also set:
+The deploy workflow fires only on a completed Build run on this repo's
+`master` (or a manual dispatch by someone with write access) — never from
+a fork or PR. Belt and braces, in **Settings → Actions → General** also
+set:
 
 - *Fork pull request workflows*: **Require approval for all outside
   collaborators**.
@@ -49,18 +50,13 @@ holds no credentials beyond the runner token.
 
 ## 4. Use it
 
-Trigger **Actions → Deploy to house server → Run workflow** (or let a
-Claude session trigger it via the API). Inputs:
-
-- `import_postcodes` (default on): one-off ~25 MB Code-Point Open import
-  when the table is empty.
-- `download_tiles` (default off): one-off ~2–3 GB GB map tile download.
-  Turn it on once; later runs skip it because the file exists.
-- `scrape_max_pages` (default 5): bounded verification scrape of the real
-  National Trust / English Heritage sites; `0` skips it. The result
-  summary step prints what was scraped. Run the full scrape with
-  `systemctl start daysout-scrape` in the container (or wait for the
-  daily 05:30 timer).
-
-Each run installs the **latest rolling release**, so push → wait for the
-Build workflow (~90 s) → dispatch deploy.
+Nothing to trigger: every push to `master` whose Build workflow goes
+green deploys automatically. Each deploy installs the latest rolling
+release, smoke-tests the live site, does the one-off data downloads if
+the files are missing (postcodes ~25 MB, GB map tiles ~2–3 GB — expect a
+long first deploy), and runs a bounded verification scrape (5 pages per
+source) against the real National Trust / English Heritage sites, with a
+result summary in the run log. A manual run from the Actions tab accepts
+a `scrape_max_pages` input (`0` skips the scrape). Run the full scrape
+with `systemctl start daysout-scrape` in the container (or wait for the
+daily 05:30 timer).

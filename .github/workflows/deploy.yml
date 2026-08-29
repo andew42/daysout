@@ -1,22 +1,24 @@
 name: Deploy to house server
 
 # Runs on the self-hosted runner inside the daysout LXD container (see
-# docs/self-hosted-runner.md). Installs the latest rolling release exactly
-# as a user would, smoke-tests the live site, and runs a bounded
-# verification scrape from the home network. Dispatch-only so nothing from
-# a fork or PR can ever reach the runner.
+# docs/self-hosted-runner.md). Fires automatically whenever the Build
+# workflow goes green on master — so every good push lands on the house
+# server — and can also be run manually from the Actions tab. Installs the
+# latest rolling release exactly as a user would, smoke-tests the live
+# site, and runs a bounded verification scrape from the home network.
+# The one-off downloads (postcodes ~25 MB, GB map tiles ~2-3 GB) happen
+# on the first deploy and are skipped once the files exist.
+#
+# Never triggered by pull requests or forks: workflow_run only fires for
+# the Build workflow on this repo's master branch.
 
 on:
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+    branches: [master]
   workflow_dispatch:
     inputs:
-      import_postcodes:
-        description: "Import Code-Point Open if the postcode table is empty (~25 MB)"
-        type: boolean
-        default: true
-      download_tiles:
-        description: "Download GB map tiles if missing (~2-3 GB, one-off)"
-        type: boolean
-        default: false
       scrape_max_pages:
         description: "Pages per source for the verification scrape (0 = skip)"
         default: "5"
@@ -24,6 +26,7 @@ on:
 jobs:
   deploy:
     runs-on: self-hosted
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Install latest release
         run: |
@@ -44,8 +47,7 @@ jobs:
           print('OK:', s['destinations'], 'destinations,', s['events'], 'events,',
                 s['postcodes'], 'postcodes, tiles:', s['tilesAvailable'])"
 
-      - name: Import postcodes
-        if: ${{ inputs.import_postcodes }}
+      - name: Import postcodes (first deploy only)
         run: |
           COUNT=$(python3 -c "
           import json; print(json.load(open('/tmp/status.json'))['postcodes'])")
@@ -55,8 +57,7 @@ jobs:
             sudo python3 /opt/daysout/setup/import_postcodes.py --db /var/lib/daysout/daysout.db
           fi
 
-      - name: Download map tiles
-        if: ${{ inputs.download_tiles }}
+      - name: Download map tiles (first deploy only)
         run: |
           if [ -f /var/lib/daysout/uk.pmtiles ]; then
             echo "uk.pmtiles already present — skipping"
@@ -70,7 +71,7 @@ jobs:
         run: |
           cd /opt/daysout/scraper
           sudo env DAYSOUT_DATA=/var/lib/daysout \
-            python3 -m daysout_scraper --max-pages "${{ inputs.scrape_max_pages }}" --keep-seed
+            python3 -m daysout_scraper --max-pages "${{ inputs.scrape_max_pages || '5' }}" --keep-seed
 
       - name: Result summary
         run: |
