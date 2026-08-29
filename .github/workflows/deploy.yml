@@ -137,5 +137,22 @@ jobs:
           for row in db.execute(
               \"SELECT name, category, postcode, lat, lon FROM destinations WHERE source != 'seed' LIMIT 8\"):
               print(row)"
+          echo "=== what a visitor would actually see this week ==="
+          sudo python3 -c "
+          import sqlite3, datetime
+          db = sqlite3.connect('/var/lib/daysout/daysout.db')
+          today = datetime.date.today().isoformat()
+          horizon = (datetime.date.today() + datetime.timedelta(days=7)).isoformat()
+          rows = db.execute(
+              'SELECT e.start_date, e.end_date, e.title, d.name, d.postcode '
+              'FROM events e JOIN destinations d ON d.id = e.destination_id '
+              'WHERE e.end_date >= ? AND e.start_date <= ? '
+              'ORDER BY e.start_date LIMIT 10', (today, horizon)).fetchall()
+          print(f'{len(rows)} event(s) in the next 7 days (showing up to 10):')
+          for start, end, title, place, postcode in rows:
+              when = start if start == end else f'{start}..{end}'
+              print(f'  {when}  {title}  @ {place} {postcode}')
+          if not rows:
+              print('  NONE — check whether scraped events are all in the past')"
           echo "=== live status ==="
           curl -sf http://localhost:8080/api/status
