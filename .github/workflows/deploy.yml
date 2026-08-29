@@ -77,6 +77,20 @@ jobs:
           sudo env DAYSOUT_DATA=/var/lib/daysout \
             python3 -m daysout_scraper --max-pages "$MAX_PAGES" --keep-seed
 
+      - name: Diagnose sources that found nothing
+        # Prints what the pages of each source actually contain, so parser
+        # or URL-pattern problems can be fixed against real markup. Cheap:
+        # the pages come from the scrape cache.
+        continue-on-error: true
+        run: |
+          cd /opt/daysout/scraper
+          for spec in "national_trust place" "national_trust event" "english_heritage event"; do
+            set -- $spec
+            echo "########## $1 / $2"
+            sudo env DAYSOUT_DATA=/var/lib/daysout \
+              python3 -m daysout_scraper.inspect --source "$1" --kind "$2" --count 2 || true
+          done
+
       - name: Result summary
         run: |
           echo "=== scrape runs ==="
