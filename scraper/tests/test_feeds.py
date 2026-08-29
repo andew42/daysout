@@ -104,6 +104,43 @@ class FeedSourceTest(unittest.TestCase):
         self.assertEqual(
             self.db.execute("SELECT COUNT(*) FROM events").fetchone()[0], 1)
 
+    def test_sitemap_source_crawls_newest_event_pages(self):
+        """Listing pages carry no events; the individual pages do."""
+        sitemap = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://fairs.example/e/old-fair</loc><lastmod>2024-05-01</lastmod></url>
+  <url><loc>https://fairs.example/e/new-fair</loc><lastmod>2026-08-27</lastmod></url>
+</urlset>"""
+        event_page = """<html><head><script type="application/ld+json">
+        {"@context":"https://schema.org","@type":"Event","name":"Autumn Craft Fair",
+         "startDate":"2026-09-05","endDate":"2026-09-05",
+         "location":{"@type":"Place","name":"Corsham Town Hall",
+                     "address":{"@type":"PostalAddress","postalCode":"SN13 0HB"}}}
+        </script></head><body></body></html>"""
+        stale_page = """<html><head><script type="application/ld+json">
+        {"@context":"https://schema.org","@type":"Event","name":"Fair From 2024",
+         "startDate":"2024-05-04","location":{"@type":"Place","name":"Corsham Town Hall",
+         "address":{"@type":"PostalAddress","postalCode":"SN13 0HB"}}}
+        </script></head><body></body></html>"""
+
+        fetcher = FakeFetcher({
+            "https://fairs.example/sitemap.xml": sitemap,
+            "https://fairs.example/e/new-fair": event_page,
+            "https://fairs.example/e/old-fair": stale_page,
+        })
+        source = FeedSource(
+            (3, "fairs", "https://fairs.example/sitemap.xml", "sitemap", "craft"))
+
+        # Budget of one page: it must spend it on the current event.
+        ok, message = run_source(self.db, fetcher, source, max_pages=1)
+        self.assertTrue(ok, message)
+        titles = [r[0] for r in self.db.execute("SELECT title FROM events")]
+        self.assertEqual(titles, ["Autumn Craft Fair"])
+
+        # And the venue came with it.
+        venue = self.db.execute("SELECT name, category FROM destinations").fetchone()
+        self.assertEqual(venue, ("Corsham Town Hall", "craft"))
+
     def test_load_enabled_skips_disabled_rows(self):
         self.db.execute(
             "INSERT INTO sources (name, url, kind, category, enabled, added) "

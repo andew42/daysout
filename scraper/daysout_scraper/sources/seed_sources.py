@@ -24,7 +24,7 @@ CANDIDATES = [
 
     # Privately owned houses open to the public — the gap left by the
     # National Trust and English Heritage.
-    ("historic-houses", "https://www.historichouses.org/whats-on/",
+    ("historic-houses", "https://www.historichouses.org/",
      "auto", "historic-house", "Historic Houses: independently owned houses"),
     ("invitation-to-view", "https://www.invitationtoview.co.uk/",
      "auto", "historic-house", "Private house tours by invitation"),
@@ -48,13 +48,32 @@ CANDIDATES = [
      "auto", "art", "Brighton Artists Open Houses"),
 
     # Gardens with their own event programmes.
-    ("rhs-events", "https://www.rhs.org.uk/events",
+    ("rhs-events", "https://www.rhs.org.uk/",
      "auto", "garden", "RHS shows and garden events"),
+]
+
+# Corrections to rows an earlier release seeded with a URL that turned out
+# to 404, applied only when the row still holds that exact wrong value, so
+# anything edited by hand is left alone.
+URL_FIXES = [
+    ("historic-houses", "https://www.historichouses.org/whats-on/",
+     "https://www.historichouses.org/"),
+    ("rhs-events", "https://www.rhs.org.uk/events", "https://www.rhs.org.uk/"),
+]
+
+# Sites discovery showed publish nothing a scraper can read. Kept as rows so
+# the finding isn't lost and nobody re-adds them, but disabled.
+DISABLE = [
+    ("uk-craft-fairs",
+     "listing pages carry no structured event data and the server returns "
+     "malformed HTTP headers; nothing machine-readable to read"),
 ]
 
 
 def ensure(db):
-    """Insert any candidate that isn't in the table yet."""
+    """Insert any candidate that isn't in the table yet, and apply the
+    corrections learned from running discovery against the real sites."""
+
     added = 0
     for name, url, kind, category, notes in CANDIDATES:
         cursor = db.execute(
@@ -63,5 +82,16 @@ def ensure(db):
                VALUES (?, ?, ?, ?, 1, ?, ?)""",
             (name, url, kind, category, notes, dbmod.now()))
         added += cursor.rowcount
+
+    for name, wrong_url, right_url in URL_FIXES:
+        db.execute(
+            "UPDATE sources SET url = ? WHERE name = ? AND url = ?",
+            (right_url, name, wrong_url))
+
+    for name, reason in DISABLE:
+        db.execute(
+            "UPDATE sources SET enabled = 0, notes = ? WHERE name = ? AND notes NOT LIKE ?",
+            (reason, name, f"%{reason[:20]}%"))
+
     db.commit()
     return added

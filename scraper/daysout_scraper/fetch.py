@@ -21,6 +21,10 @@ CACHE_TTL_SECONDS = 20 * 60 * 60  # just under a day so daily runs refetch
 
 # Transient server-side conditions worth waiting out (never 4xx except 429:
 # those mean the request itself is wrong, and retrying just adds load).
+# A site that hasn't answered in half a minute isn't going to; a source
+# probe that waits a full minute three times over drags out every run.
+TIMEOUT_SECONDS = 30
+
 RETRY_STATUS = {429, 500, 502, 503, 504}
 RETRY_ATTEMPTS = 3
 RETRY_BACKOFF_SECONDS = 5
@@ -79,7 +83,7 @@ class Fetcher:
         # shouldn't lose a whole category for the day.
         for attempt in range(RETRY_ATTEMPTS):
             self._throttle(url)
-            response = self.session.get(url, timeout=60)
+            response = self.session.get(url, timeout=TIMEOUT_SECONDS)
             if response.status_code not in RETRY_STATUS or attempt == RETRY_ATTEMPTS - 1:
                 break
             delay = RETRY_BACKOFF_SECONDS * (2 ** attempt)

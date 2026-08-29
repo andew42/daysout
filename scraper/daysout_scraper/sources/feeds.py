@@ -15,8 +15,15 @@ import logging
 import re
 
 from .. import discover, ical, jsonld
+from ..sitemap_source import sitemap_urls
 
 log = logging.getLogger(__name__)
+
+# Listing pages rarely carry the events themselves; the individual event
+# pages do, because sites want Google's event rich results. Crawling a whole
+# sitemap for that would be rude and slow, so take the most recently
+# modified pages — on an events site those are the current events.
+DEFAULT_SITEMAP_PAGES = 50
 
 # "Bolsover Castle, Castle Street, Bolsover, S44 6PR" -> S44 6PR
 POSTCODE_RE = re.compile(
@@ -39,6 +46,7 @@ class FeedSource:
     def __init__(self, row):
         # row: (id, name, url, kind, category)
         self.source_id, self.name, self.url, self.kind, self.category = row
+        self.sitemap = ""
 
     # The pipeline treats every source the same way.
     def scrape(self, fetcher, max_pages=0):
@@ -53,6 +61,8 @@ class FeedSource:
             yield from self._from_ical(fetcher, max_pages)
         elif kind == "jsonld":
             yield from self._from_jsonld(fetcher)
+        elif kind == "sitemap":
+            yield from self._from_sitemap(fetcher, max_pages)
         else:
             log.warning("%s: unsupported kind %r", self.name, kind)
 
@@ -66,7 +76,36 @@ class FeedSource:
             return "ical"
         if "jsonld" in report["formats"]:
             return "jsonld"
+        if "sitemap" in report["formats"]:
+            self.sitemap = report["sitemap_urls"][0]
+            return "sitemap"
         return None
+
+    def _from_sitemap(self, fetcher, max_pages):
+        sitemap = self.sitemap or self.url
+        limit = max_pages or DEFAULT_SITEMAP_PAGES
+
+        pages = sorted(
+            ((lastmod, url) for url, lastmod
+             in sitemap_urls(fetcher, sitemap, with_lastmod=True)),
+            reverse=True)[:limit]
+        log.info("%s: scanning %d most recent page(s) of %s",
+                 self.name, len(pages), sitemap)
+
+        found = 0
+        for _, url in pages:
+            try:
+                body = fetcher.get(url)
+            except Exception as e:  # noqa: BLE001 — one bad page, keep going
+                log.debug("%s: %s failed: %s", self.name, url, e)
+                continue
+            for obj in jsonld.extract_objects(body):
+                parsed = jsonld.parse_event(obj, url)
+                if parsed:
+                    found += 1
+                    yield "event", self._event(
+                        parsed, f"{parsed['title']}-{parsed['start_date']}")
+        log.info("%s: %d event(s) in those pages", self.name, found)
 
     def _from_ical(self, fetcher, max_pages):
         text = fetcher.get(self.url)
