@@ -77,6 +77,33 @@ jobs:
           sudo env DAYSOUT_DATA=/var/lib/daysout \
             python3 -m daysout_scraper --max-pages "$MAX_PAGES" --keep-seed
 
+      - name: Diagnose map tiles
+        # The style's 71 layers reference source-layers earth/landcover/
+        # landuse/roads/water/buildings/boundaries/pois/places and need
+        # "Noto Sans Regular|Medium|Italic" glyphs plus a sprite. Check the
+        # archive really contains those layers and that the browser can
+        # actually fetch tiles, glyphs and sprite through the server.
+        continue-on-error: true
+        run: |
+          cd /var/lib/daysout
+          echo "=== pmtiles archive metadata"
+          ./pmtiles show uk.pmtiles 2>&1 | head -40 || pmtiles show uk.pmtiles 2>&1 | head -40
+          echo
+          echo "=== basemap asset layout"
+          ls basemap | head
+          echo "--- fonts:"; ls basemap/fonts 2>&1 | head -5
+          echo "--- sprites:"; find basemap/sprites -maxdepth 2 2>&1 | head -12
+          echo
+          echo "=== what the browser actually gets"
+          curl -s -o /dev/null -w "  tile archive (range):   %{http_code} (%{size_download} bytes)\n" \
+            -H 'Range: bytes=0-16383' http://localhost:8080/tiles/uk.pmtiles
+          curl -s -o /dev/null -w "  glyphs Noto Sans Regular: %{http_code}\n" \
+            "http://localhost:8080/basemap/fonts/Noto%20Sans%20Regular/0-255.pbf"
+          curl -s -o /dev/null -w "  sprite v4/light.json:     %{http_code}\n" \
+            http://localhost:8080/basemap/sprites/v4/light.json
+          curl -s -o /dev/null -w "  sprite light.json:        %{http_code}\n" \
+            http://localhost:8080/basemap/sprites/light.json
+
       - name: Diagnose sources that found nothing
         # Prints what the pages of each source actually contain, so parser
         # or URL-pattern problems can be fixed against real markup. Cheap:

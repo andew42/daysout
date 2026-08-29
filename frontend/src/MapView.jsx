@@ -6,9 +6,12 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { fetchDestinations, fetchStatus } from './api.jsx'
 import { loadSettings } from './settings.jsx'
 
-// Register the pmtiles:// protocol once for the whole app.
+// Register the pmtiles:// protocol once for the whole app. Pass the handler
+// by reference: MapLibre calls it with (requestParameters, abortController)
+// and pmtiles needs both, so wrapping it in a one-argument arrow function
+// makes every tile request throw and leaves the map silently blank.
 const protocol = new Protocol()
-maplibregl.addProtocol('pmtiles', tile => protocol.tile(tile))
+maplibregl.addProtocol('pmtiles', protocol.tile)
 
 const categoryColors = {
   'historic-house': '#8c4a2f',
@@ -16,14 +19,30 @@ const categoryColors = {
   airfield: '#3a5da8',
 }
 
+// The sprite lives at a versioned path in the basemap assets, and which
+// version is current changes with the asset bundle. Probe rather than
+// hardcode: a wrong sprite path is an easy way to lose all the map's icons.
+const SPRITE_PATHS = ['/basemap/sprites/v4/light', '/basemap/sprites/light']
+
+async function resolveSprite() {
+  for (const path of SPRITE_PATHS) {
+    try {
+      const response = await fetch(path + '.json', { method: 'HEAD' })
+      if (response.ok) return location.origin + path
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return null
+}
+
 // Basemap style using the offline tile archive and locally served fonts and
 // sprites (populated by setup/get-tiles.sh). When tiles are missing we fall
 // back to a plain background so markers still show.
-function buildStyle(tilesAvailable) {
+function buildStyle(tilesAvailable, spriteUrl) {
   const style = {
     version: 8,
     glyphs: '/basemap/fonts/{fontstack}/{range}.pbf',
-    sprite: location.origin + '/basemap/sprites/v4/light',
     sources: {},
     layers: [{
       id: 'background',
@@ -31,6 +50,7 @@ function buildStyle(tilesAvailable) {
       paint: { 'background-color': '#e8ece4' },
     }],
   }
+  if (spriteUrl) style.sprite = spriteUrl
   if (tilesAvailable) {
     style.sources.protomaps = {
       type: 'vector',
@@ -71,11 +91,17 @@ function popupHTML(destination) {
     ~${Math.round(destination.driveMinutes)} min drive${events}<br>${link}`
 }
 
+// Layers the basemap style draws from; if the archive has none of these the
+// map renders blank with no error, so check rather than leave the user
+// staring at an empty screen.
+const EXPECTED_SOURCE_LAYERS = ['earth', 'water', 'roads', 'places']
+
 export default function MapView() {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const markersRef = useRef([])
   const [error, setError] = useState('')
+  const [mapWarning, setMapWarning] = useState('')
   const [summary, setSummary] = useState('Loading…')
 
   useEffect(() => {
@@ -100,15 +126,41 @@ export default function MapView() {
       if (cancelled) return
 
       const home = result.home
+      const spriteUrl = tilesAvailable ? await resolveSprite() : null
+      if (cancelled) return
+
       const map = new maplibregl.Map({
         container: containerRef.current,
-        style: buildStyle(tilesAvailable),
+        style: buildStyle(tilesAvailable, spriteUrl),
         center: [home.lon, home.lat],
         zoom: 9,
         attributionControl: tilesAvailable ? {} : false,
       })
       mapRef.current = map
       map.addControl(new maplibregl.NavigationControl(), 'top-right')
+
+      // A basemap that fails to load is otherwise silent — the canvas just
+      // stays empty — so say what went wrong.
+      map.on('error', event => {
+        const message = event?.error?.message || String(event?.error || 'unknown error')
+        setMapWarning(`Basemap problem: ${message}`)
+      })
+
+      // Tiles can load fine and still draw nothing if the archive's layers
+      // aren't the ones this style expects. Check once, after the first
+      // render settles.
+      if (tilesAvailable) {
+        map.once('idle', () => {
+          const present = EXPECTED_SOURCE_LAYERS.filter(sourceLayer =>
+            map.querySourceFeatures('protomaps', { sourceLayer }).length > 0)
+          if (present.length === 0) {
+            setMapWarning(
+              'The tile archive served none of the layers this style draws ' +
+              '(earth, water, roads, places): it may be incomplete, or built to a ' +
+              'different basemap version. Re-run setup/get-tiles.sh to rebuild it.')
+          }
+        })
+      }
 
       map.on('load', () => {
         map.addSource('drive-limit', { type: 'geojson', data: radiusCircle(home, result.minutes) })
@@ -157,6 +209,7 @@ export default function MapView() {
   return (
     <div className="map-view">
       {error ? <p className="notice error">{error}</p> : <p className="map-summary">{summary}</p>}
+      {mapWarning && <p className="notice error">{mapWarning}</p>}
       <div ref={containerRef} className="map-container" />
     </div>
   )
