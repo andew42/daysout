@@ -49,20 +49,32 @@ def run_source(db, fetcher, source, max_pages=0):
         # Events last so every place of this run is available to link against.
         for event in pending_events:
             events += 1
-            destination = source.link_event(event) or \
-                name_to_source_id.get(_normalise_name(event.get("location_name", "")))
-            if not destination:
-                # An event from a listing site names a venue we may never
-                # have seen. Create it from its postcode so the event has a
-                # location and can be sorted by distance.
-                destination = dbmod.ensure_venue(
-                    db, source.name, event.get("location_name", ""),
+            venue_name = event.get("location_name", "")
+
+            # Where does this event happen? In order of confidence: the
+            # source says so, a place from this run matches by name, a
+            # destination we already hold matches by name (an event listing
+            # rarely repeats the postcode of a place someone else catalogued),
+            # or we create the venue from its own postcode.
+            key = source.link_event(event) or \
+                name_to_source_id.get(_normalise_name(venue_name))
+            destination_id = dbmod.find_destination_id(db, source.name, key) if key else None
+
+            if destination_id is None:
+                destination_id = dbmod.find_destination_id_by_name(db, venue_name)
+
+            if destination_id is None:
+                created = dbmod.ensure_venue(
+                    db, source.name, venue_name,
                     event.get("venue_postcode", ""),
                     event.get("category") or "venue")
-            if not destination:
+                if created:
+                    destination_id = dbmod.find_destination_id(db, source.name, created)
+
+            if destination_id is None:
                 continue
-            event["destination_source_id"] = destination
-            if dbmod.upsert_event(db, source.name, event):
+            dbmod.touch_destination(db, destination_id, source.name)
+            if dbmod.upsert_event(db, source.name, event, destination_id):
                 linked += 1
 
         # Only a complete crawl knows what no longer exists. A bounded run

@@ -141,6 +141,34 @@ class FeedSourceTest(unittest.TestCase):
         venue = self.db.execute("SELECT name, category FROM destinations").fetchone()
         self.assertEqual(venue, ("Corsham Town Hall", "craft"))
 
+    def test_links_to_a_destination_another_source_found(self):
+        """An event listing rarely repeats the postcode of a known place."""
+        # Wikidata already gave us this garden, with coordinates.
+        self.db.execute(
+            """INSERT INTO destinations
+                 (name, category, lat, lon, source, source_id, first_seen, last_seen)
+               VALUES ('RHS Garden Wisley', 'garden', 51.312, -0.474,
+                       'wikidata', 'Q1319441', 'x', 'x')""")
+        self.db.commit()
+
+        page = """<html><head><script type="application/ld+json">
+        {"@context":"https://schema.org","@type":"Event","name":"Flower Show",
+         "startDate":"2026-09-10","endDate":"2026-09-12",
+         "location":{"@type":"Place","name":"RHS Garden Wisley"}}
+        </script></head><body></body></html>"""
+        source = FeedSource((4, "rhs", "https://rhs.example/e", "jsonld", "garden"))
+        ok, message = run_source(
+            self.db, FakeFetcher({"https://rhs.example/e": page}), source)
+        self.assertTrue(ok, message)
+
+        row = self.db.execute(
+            "SELECT e.title, d.name, d.source FROM events e "
+            "JOIN destinations d ON d.id = e.destination_id").fetchone()
+        self.assertEqual(row, ("Flower Show", "RHS Garden Wisley", "wikidata"))
+        # No duplicate venue was invented for it.
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM destinations").fetchone()[0], 1)
+
     def test_load_enabled_skips_disabled_rows(self):
         self.db.execute(
             "INSERT INTO sources (name, url, kind, category, enabled, added) "

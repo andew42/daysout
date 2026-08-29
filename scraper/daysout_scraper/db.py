@@ -5,6 +5,7 @@ the site stays up. All writes are upserts keyed on (source, source_id) so a
 re-run updates rows instead of duplicating them.
 """
 
+import re
 import sqlite3
 from datetime import datetime, timezone
 
@@ -55,16 +56,56 @@ def upsert_destination(db, source, dest):
          "url": dest.get("url", ""), "postcode": dest.get("postcode", "")})
 
 
-def upsert_event(db, source, event):
-    """event keys: source_id, destination_source_id, title, description, url,
-    start_date, end_date (ISO dates). The destination must already be
-    upserted by the same source."""
-    ts = now()
+def normalise_name(name):
+    """Loose key for matching venue names across sources."""
+    return re.sub(r"[^a-z0-9]", "", (name or "").lower())
+
+
+def find_destination_id(db, source, source_id):
     row = db.execute(
         "SELECT id FROM destinations WHERE source = ? AND source_id = ?",
-        (source, event["destination_source_id"])).fetchone()
-    if row is None:
+        (source, source_id)).fetchone()
+    return row[0] if row else None
+
+
+def find_destination_id_by_name(db, name):
+    """Any destination with this name, whichever source found it.
+
+    An event listing names a venue like "RHS Garden Wisley" with no
+    postcode, but we may already hold that place with coordinates from
+    another source. Matching by name across the whole table is what lets
+    such an event be placed at all.
+    """
+    key = normalise_name(name)
+    if len(key) < 4:  # too short to be a confident match
+        return None
+    for destination_id, candidate in db.execute(
+            "SELECT id, name FROM destinations").fetchall():
+        if normalise_name(candidate) == key:
+            return destination_id
+    return None
+
+
+def touch_destination(db, destination_id, source):
+    """Mark a destination still in use by this run.
+
+    purge_stale removes this source's rows that this run didn't report, so
+    every destination an event is attached to has to be touched — however
+    it was found. Miss this and the purge deletes the venue out from under
+    the event that needs it.
+    """
+    db.execute(
+        "UPDATE destinations SET last_seen = ? WHERE id = ? AND source = ?",
+        (now(), destination_id, source))
+
+
+def upsert_event(db, source, event, destination_id):
+    """event keys: source_id, title, description, url, start_date, end_date
+    (ISO dates), category. destination_id is the place it happens at."""
+    ts = now()
+    if destination_id is None:
         return False
+    row = (destination_id,)
     db.execute(
         """INSERT INTO events
              (destination_id, title, description, url, start_date, end_date,

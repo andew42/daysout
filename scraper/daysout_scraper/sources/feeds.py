@@ -25,6 +25,13 @@ log = logging.getLogger(__name__)
 # modified pages — on an events site those are the current events.
 DEFAULT_SITEMAP_PAGES = 50
 
+# The newest pages on a site are often blog posts and news, not events, so
+# prefer paths that look like an event before falling back on recency.
+EVENT_URL_HINT_RE = re.compile(
+    r"/(events?|whats-on|what-s-on|fairs?|festivals?|shows?|exhibitions?|"
+    r"open-gardens?|find-a-garden|gardens?-open|open-days?|visit)\b",
+    re.IGNORECASE)
+
 # "Bolsover Castle, Castle Street, Bolsover, S44 6PR" -> S44 6PR
 POSTCODE_RE = re.compile(
     r"\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b", re.IGNORECASE)
@@ -85,12 +92,14 @@ class FeedSource:
         sitemap = self.sitemap or self.url
         limit = max_pages or DEFAULT_SITEMAP_PAGES
 
-        pages = sorted(
-            ((lastmod, url) for url, lastmod
-             in sitemap_urls(fetcher, sitemap, with_lastmod=True)),
-            reverse=True)[:limit]
-        log.info("%s: scanning %d most recent page(s) of %s",
-                 self.name, len(pages), sitemap)
+        all_pages = [(lastmod, url) for url, lastmod
+                     in sitemap_urls(fetcher, sitemap, with_lastmod=True)]
+        event_like = [p for p in all_pages if EVENT_URL_HINT_RE.search(p[1])]
+        chosen, why = (event_like, "event-looking") if event_like else (all_pages, "recent")
+
+        pages = sorted(chosen, reverse=True)[:limit]
+        log.info("%s: scanning %d %s page(s) of %d in %s",
+                 self.name, len(pages), why, len(all_pages), sitemap)
 
         found = 0
         for _, url in pages:
