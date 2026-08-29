@@ -25,6 +25,31 @@ bot-protection challenge to automated clients, and working around that
 would mean circumventing an access control the owner put there on
 purpose. Their properties reach the map via Wikidata instead.
 
+### Which event sources actually work
+
+Event sources live in the `sources` table, so trying a new listing site is
+an INSERT plus `python3 -m daysout_scraper.discover`, not a code change.
+Twelve candidates were tried against the real sites (August 2026), and the
+result is worth knowing before adding more:
+
+| Source | Result |
+|--------|--------|
+| English Heritage | **Works** — 392 properties, ~119 events, Event JSON-LD per page |
+| RHS | Publishes Event JSON-LD; events read but not yet placed at a venue |
+| NGS (open gardens, garden finder) | Sitemap only — no Event JSON-LD; open-day dates are client-side |
+| Historic Houses, Invitation to View | Sitemap only — WebPage/Article JSON-LD, no events |
+| Brighton Open Houses, Creative Crafts | Sitemap (and RSS) but no Event JSON-LD |
+| The Festival Calendar (art/food/music) | Sitemap only, no Event JSON-LD |
+| Food festival blog | BlogPosting JSON-LD; dates are prose |
+| UK Craft Fairs | No structured data; malformed HTTP headers |
+
+The ones that yield nothing are kept as rows, disabled, with the reason in
+`notes` — so the daily scrape doesn't spend requests on them and nobody
+rediscovers the same dead ends. The common thread is that these sites build
+their listings client-side or behind a search form, so the dates a visitor
+sees never reach the HTML. That is a property of the sites: English
+Heritage and RHS are read fine by the same generic crawl.
+
 ## How it works
 
 ```

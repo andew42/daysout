@@ -48,6 +48,12 @@ CANDIDATES = [
      "auto", "art", "Brighton Artists Open Houses"),
 
     # Gardens with their own event programmes.
+    # The one listing site that does publish Event JSON-LD. Its five events
+    # are read correctly but none can be placed yet: they name RHS gardens
+    # as their venue and none of those gardens is in destinations under a
+    # matching name. Left enabled — the pipeline now logs the venue name of
+    # every unplaced event, so the next run says exactly which names to look
+    # for rather than inviting another guess.
     ("rhs-events", "https://www.rhs.org.uk/",
      "auto", "garden", "RHS shows and garden events"),
 ]
@@ -61,12 +67,41 @@ URL_FIXES = [
     ("rhs-events", "https://www.rhs.org.uk/events", "https://www.rhs.org.uk/"),
 ]
 
-# Sites discovery showed publish nothing a scraper can read. Kept as rows so
-# the finding isn't lost and nobody re-adds them, but disabled.
+# Verdicts from running discovery and a sitemap crawl against each site on
+# real hardware (2026-08-29). Kept as rows, disabled, so the finding isn't
+# lost and nobody spends another evening rediscovering it. Re-enable any of
+# them with:  UPDATE sources SET enabled = 1 WHERE name = '...';
+#
+# The pattern: every one of these publishes a sitemap, and every one carries
+# JSON-LD — but of type WebPage, Organization, BlogPosting or Article, never
+# Event. Their listings are built client-side or from a search form, so the
+# dates a visitor sees never appear in the HTML we can read. That is a
+# property of the sites, not a gap in the scraper: English Heritage and RHS
+# publish Event JSON-LD through exactly the same crawl and are read fine.
 DISABLE = [
     ("uk-craft-fairs",
-     "listing pages carry no structured event data and the server returns "
-     "malformed HTTP headers; nothing machine-readable to read"),
+     "no structured event data at all, and the server returns malformed "
+     "HTTP headers"),
+    ("ngs-open-gardens",
+     "sitemap only; garden and open-day pages carry WebPage/Organization "
+     "JSON-LD, no Event. Open-day dates are rendered client-side"),
+    ("ngs-find-a-garden",
+     "same as ngs-open-gardens: the garden search is client-side, so no "
+     "dates reach the HTML"),
+    ("historic-houses",
+     "sitemap only; pages carry WebPage/ImageObject JSON-LD, no Event"),
+    ("invitation-to-view",
+     "sitemap only; pages carry Article/FAQPage JSON-LD, no Event"),
+    ("brighton-open-houses",
+     "sitemap and an RSS feed, but no Event JSON-LD on either"),
+    ("creative-crafts",
+     "sitemap only, no structured events"),
+    ("festival-calendar-art",
+     "sitemap only; the festival listings carry no Event JSON-LD"),
+    ("festival-calendar-food", "as festival-calendar-art"),
+    ("festival-calendar-music", "as festival-calendar-art"),
+    ("food-festivals-uk",
+     "a blog: BlogPosting JSON-LD, no Event. Festival dates are prose"),
 ]
 
 
