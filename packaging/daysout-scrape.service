@@ -1,0 +1,12 @@
+[Unit]
+Description=Daysout web scraper (refreshes destinations and events)
+Wants=network-online.target
+After=network-online.target daysout.service
+
+[Service]
+Type=oneshot
+Environment=DAYSOUT_DATA=/var/lib/daysout
+WorkingDirectory=/opt/daysout/scraper
+ExecStart=/usr/bin/python3 -m daysout_scraper
+# A full crawl is ~1000 pages at 1 req/s; give it room but not forever
+TimeoutStartSec=2h

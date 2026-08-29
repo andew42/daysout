@@ -1,0 +1,14 @@
+# Runtime data (database, tiles, scrape cache)
+data/
+
+# Frontend
+frontend/node_modules/
+frontend/build/
+
+# Python
+__pycache__/
+*.pyc
+
+# Build output
+backend/daysout
+backend/daysout-*

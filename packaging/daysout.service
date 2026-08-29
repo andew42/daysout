@@ -1,0 +1,15 @@
+[Unit]
+Description=Daysout destinations and events planner
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Environment=DAYSOUT=/opt/daysout
+Environment=DAYSOUT_DATA=/var/lib/daysout
+WorkingDirectory=/opt/daysout
+ExecStart=/opt/daysout/daysout
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
