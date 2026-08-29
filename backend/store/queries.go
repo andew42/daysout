@@ -24,7 +24,14 @@ type Destination struct {
 	UpcomingEvents int     `json:"upcomingEvents"`
 }
 
-// Event is a dated special event at a destination.
+// OngoingDays separates a special event from a standing offer. Venues
+// publish long-running programmes ("Knitting Group", Jan–Oct) through the
+// same feeds as one-off events; both are worth listing, but a thing that
+// has been running for months is not what you want to see first when
+// asking what's on this weekend.
+const OngoingDays = 14
+
+// Event is a dated event at a destination.
 type Event struct {
 	ID          int64       `json:"id"`
 	Title       string      `json:"title"`
@@ -32,7 +39,22 @@ type Event struct {
 	URL         string      `json:"url"`
 	StartDate   string      `json:"startDate"`
 	EndDate     string      `json:"endDate"`
+	Ongoing     bool        `json:"ongoing"`
 	Destination Destination `json:"destination"`
+}
+
+// isOngoing reports whether an event spans more than OngoingDays.
+func isOngoing(startDate, endDate string) bool {
+
+	start, err := time.Parse("2006-01-02", startDate)
+	if err != nil {
+		return false
+	}
+	end, err := time.Parse("2006-01-02", endDate)
+	if err != nil {
+		return false
+	}
+	return end.Sub(start) > OngoingDays*24*time.Hour
 }
 
 // SourceStatus is the latest scrape run recorded for one source.
@@ -167,6 +189,7 @@ func (s *Store) Events(lat, lon, maxMinutes float64, days int, categories []stri
 		}
 		d.DistanceKm = HaversineKm(lat, lon, d.Lat, d.Lon)
 		d.DriveMinutes = DriveMinutes(d.DistanceKm)
+		e.Ongoing = isOngoing(e.StartDate, e.EndDate)
 		if d.DriveMinutes <= maxMinutes {
 			result = append(result, e)
 		}
@@ -175,7 +198,15 @@ func (s *Store) Events(lat, lon, maxMinutes float64, days int, categories []stri
 		return nil, err
 	}
 
+	// Special events first, then standing programmes; nearest first within
+	// each, as asked for.
 	slices.SortFunc(result, func(a, b Event) int {
+		if a.Ongoing != b.Ongoing {
+			if a.Ongoing {
+				return 1
+			}
+			return -1
+		}
 		switch {
 		case a.Destination.DriveMinutes < b.Destination.DriveMinutes:
 			return -1
