@@ -80,7 +80,10 @@ class Wikidata:
             url = ENDPOINT + "?" + urlencode(
                 {"format": "json", "query": BASE % (where, limit)})
             try:
-                payload = json.loads(fetcher.get(url))
+                # api=True: WDQS is a published query endpoint meant for
+                # programmatic use, and its robots.txt disallows /sparql so
+                # crawlers don't walk infinitely many generated query URLs.
+                payload = json.loads(fetcher.get(url, api=True))
             except Exception as e:  # noqa: BLE001 — one bad query mustn't end the run
                 log.warning("wikidata query %s failed: %s", query_name, e)
                 continue

@@ -84,9 +84,9 @@ jobs:
         continue-on-error: true
         run: |
           cd /opt/daysout/scraper
-          echo "########## english_heritage / event (event dates are not in JSON-LD)"
+          echo "########## english_heritage sitemap URL shapes (where do dated events live?)"
           sudo env DAYSOUT_DATA=/var/lib/daysout \
-            python3 -m daysout_scraper.inspect --source english_heritage --kind event --count 2 || true
+            python3 -m daysout_scraper.inspect --source english_heritage --url-shapes || true
 
       - name: Result summary
         run: |

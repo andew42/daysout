@@ -86,6 +86,36 @@ def describe(html, url):
             print(f"    <meta {name}={meta.get('content')!r}>")
 
 
+def url_shapes(fetcher, source, limit=25):
+    """Summarise a sitemap by URL shape.
+
+    Shows what page types the site actually publishes, which is how you
+    find the URL pattern you should be matching when the one you guessed
+    turns out to hold the wrong kind of page.
+    """
+    from collections import Counter
+
+    shapes = Counter()
+    examples = {}
+    total = 0
+    for sitemap in source.sitemaps:
+        for url in sitemap_urls(fetcher, sitemap):
+            total += 1
+            path = url.split("//", 1)[-1].split("/", 1)[-1].strip("/")
+            segments = path.split("/") if path else []
+            # Keep the leading literal segments, mark the rest as slugs.
+            shape = "/".join(segments[:2] + ["<slug>"] * max(0, len(segments) - 2))
+            shapes[shape] += 1
+            examples.setdefault(shape, url)
+
+    print(f"{total} URLs in {source.name} sitemap(s); {len(shapes)} distinct shapes")
+    for shape, count in shapes.most_common(limit):
+        classified = source.classify(examples[shape])
+        marker = f"  [matched as {classified}]" if classified else ""
+        print(f"  {count:6d}  {shape}{marker}")
+        print(f"          e.g. {examples[shape]}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", required=True,
@@ -93,6 +123,9 @@ def main():
     parser.add_argument("--kind", default="place", choices=["place", "event"])
     parser.add_argument("--count", type=int, default=2, help="pages to inspect")
     parser.add_argument("--cache", default="", help="page cache dir")
+    parser.add_argument("--url-shapes", action="store_true",
+                        help="summarise the sitemap by URL shape instead of "
+                             "inspecting pages")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
@@ -104,6 +137,12 @@ def main():
 
     data = os.environ.get("DAYSOUT_DATA") or "data"
     fetcher = Fetcher(args.cache or str(Path(data) / "scrape-cache"))
+
+    if args.url_shapes:
+        if not getattr(source, "sitemaps", None):
+            sys.exit(f"{args.source} is not a sitemap-based source")
+        url_shapes(fetcher, source)
+        return
 
     found = 0
     for sitemap in source.sitemaps:

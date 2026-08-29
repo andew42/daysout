@@ -55,7 +55,10 @@ class FakeFetcher:
         self.responses = responses
         self.requests = []
 
-    def get(self, url):
+    def get(self, url, api=False):
+        # The real source calls a published query endpoint, so it passes
+        # api=True; assert that rather than quietly accepting either.
+        assert api, "the Wikidata SPARQL endpoint should be fetched as an API"
         self.requests.append(url)
         for key, marker in (("national-trust", "Q333515"),
                             ("english-heritage", "Q936287"),
@@ -108,10 +111,10 @@ class WikidataTest(unittest.TestCase):
 
     def test_failed_query_does_not_end_the_run(self):
         class OneBadQuery(FakeFetcher):
-            def get(self, url):
+            def get(self, url, api=False):
                 if "Q333515" in url:
                     raise OSError("timeout")
-                return super().get(url)
+                return super().get(url, api=api)
 
         ok, _ = run_source(self.db, OneBadQuery(), Wikidata())
         self.assertTrue(ok)

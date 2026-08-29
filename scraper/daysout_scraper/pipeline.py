@@ -36,7 +36,8 @@ def run_source(db, fetcher, source, max_pages=0):
         # or the URL patterns no longer match — never a genuinely empty
         # source. Purging on that would wipe good data on a network blip.
         if places == 0:
-            message = "no places found (sitemap unreachable or URL patterns wrong); nothing purged"
+            message = ("no places found (source unreachable, blocked, or its "
+                       "patterns/queries are wrong); nothing purged")
             log.warning("%s: %s", source.name, message)
             dbmod.finish_run(db, run_id, ok=False, message=message)
             return False, message
