@@ -14,10 +14,16 @@ keys, no subscriptions.
   browser).
 
 A separate Python scraper runs on a daily systemd timer and is the only
-process that touches the internet: it crawls destination websites
-(National Trust and English Heritage so far) via their sitemaps, parses
-the schema.org JSON-LD their pages embed, and upserts destinations and
-events into the shared database.
+process that touches the internet. Destinations come from Wikidata's
+SPARQL endpoint (CC0 open data, one request per category — National Trust
+and English Heritage properties, gardens, aviation museums); English
+Heritage's own site is crawled via its sitemap for schema.org JSON-LD.
+Both feed the same destinations and events tables.
+
+National Trust's website is deliberately **not** scraped: it serves a
+bot-protection challenge to automated clients, and working around that
+would mean circumventing an access control the owner put there on
+purpose. Their properties reach the map via Wikidata instead.
 
 ## How it works
 

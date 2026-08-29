@@ -47,10 +47,23 @@ daysout/
   carries a mirror copy — keep them in sync.
 - **Seed data**: a fresh database gets ~13 demo destinations
   (source='seed'); the scraper purges them once any real source has data.
-- **Scraper strategy**: sitemap crawl + schema.org JSON-LD parsing
-  (generic engine in `sitemap_source.py`/`jsonld.py`), not per-site HTML
-  scraping or private APIs. Politeness: robots.txt, 1 req/s/host, honest
-  UA, 20h on-disk cache. Each source run is logged to `scrape_runs`.
+- **Scraper strategy**: destinations come from Wikidata's SPARQL endpoint
+  (CC0 open data, one request per category — `sources/wikidata.py`);
+  organisation sites are crawled via sitemap + schema.org JSON-LD (generic
+  engine in `sitemap_source.py`/`jsonld.py`) for their own properties and
+  events. Politeness: robots.txt, 1 req/s/host, honest UA, 20h on-disk
+  cache. Each source run is logged to `scrape_runs`.
+- **National Trust scraping is disabled and must stay that way**: their
+  site serves a Radware bot-protection challenge instead of content. We do
+  not disguise the scraper or solve the challenge — NT properties come
+  from Wikidata instead. See `sources/national_trust.py`.
+- **Bounded runs never purge**: `--max-pages` runs (verification deploys)
+  set `partial` and skip `purge_stale`, because a run that only looked at
+  part of a source knows nothing about the rest.
+- **Diagnosing a source**: `python3 -m daysout_scraper.inspect --source X
+  --kind place|event` prints what the parser actually sees on real pages.
+  The dev sandbox can't reach these sites — the deploy workflow runs it on
+  the house server and the output lands in the run log.
 - **Concurrency**: server and scraper share the DB via WAL mode.
 
 ## Gotchas

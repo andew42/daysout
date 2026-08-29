@@ -1,13 +1,23 @@
-"""National Trust properties and events.
+"""National Trust — DISABLED, the site blocks automated access.
 
-Crawls www.nationaltrust.org.uk via its sitemap. Place pages live at
-/visit/<region>/<place> and carry Place JSON-LD with coordinates; event
-pages live below the place page (…/<place>/events/… or …/whats-on…) and
-carry Event JSON-LD, so the owning place is derived from the URL path.
+The sitemap crawl works (1279 property pages, 2229 event pages), but the
+property and event pages themselves come back as a Radware bot-protection
+challenge page ("Radware Page", ~118 KB, no content) rather than the real
+HTML. That is the site deliberately refusing automated clients.
 
-NOTE: URL patterns were designed from the site's public structure but the
-first run should be checked with --max-pages 20 from a network that can
-reach the site (this repo's development environment could not).
+We do not work around that. Disguising the scraper as a browser, solving
+the challenge, or rotating identities would be circumventing an access
+control the site owner put in place on purpose — so this source stays
+disabled rather than evasive.
+
+National Trust properties still reach the database: they come from
+Wikidata (see wikidata.py), which publishes them as CC0 open data with an
+endpoint meant for programmatic queries. Events are the part that is
+genuinely lost — if they are wanted later, the sanctioned routes are to
+ask the National Trust for data access, or to look for an official feed.
+
+The module is kept (and excluded from sources.IMPLEMENTED) so the URL
+patterns and this history are not rediscovered from scratch.
 """
 
 import re
@@ -26,6 +36,9 @@ class NationalTrust(SitemapJsonLdSource):
     sitemaps = ("https://www.nationaltrust.org.uk/sitemap.xml",)
 
     def classify(self, url):
+        # Note: PLACE_RE also matches region listing pages such as
+        # /visit/yorkshire/gardens-parks, which are not properties. If this
+        # source is ever revived, that needs a deny-list of listing slugs.
         if PLACE_RE.match(url):
             return "place"
         if EVENT_RE.match(url):
@@ -37,6 +50,5 @@ class NationalTrust(SitemapJsonLdSource):
         return "garden" if GARDEN_WORDS.search(text) else "historic-house"
 
     def link_event(self, event):
-        """Owning place slug straight from the event page URL."""
         match = EVENT_RE.match(event.get("page_url", ""))
         return match.group(1) if match else None

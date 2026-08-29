@@ -1,12 +1,19 @@
-"""Source registry. A source is implemented when it can actually be scraped;
-placeholders document where the next ones should come from."""
+"""Source registry.
+
+Wikidata supplies destinations (CC0 open data, one query per category);
+English Heritage's own site supplies its properties and is the route to
+event listings. National Trust scraping is disabled — the site serves a
+bot-protection challenge instead of content, and we don't evade that; its
+properties come from Wikidata instead. See each module's docstring.
+"""
 
 from .english_heritage import EnglishHeritage
-from .national_trust import NationalTrust
+from .wikidata import Wikidata
 
-# Order matters only for log readability.
-IMPLEMENTED = [NationalTrust, EnglishHeritage]
+IMPLEMENTED = [Wikidata, EnglishHeritage]
 
-# Researched but not yet implemented — see each module's docstring:
+# Present but deliberately not run:
+#   national_trust.py  site blocks automated access (see its docstring)
+# Researched, not yet implemented:
 #   ngs.py       National Garden Scheme open days (garden events)
-#   airfields.py Aviation museums and air show calendars
+#   airfields.py air show calendars

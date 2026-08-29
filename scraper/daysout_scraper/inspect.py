@@ -61,6 +61,23 @@ def describe(html, url):
                       f"{len(script.string or '')} chars")
         print(f"    title: {soup.title.string.strip()[:120] if soup.title else '(none)'}")
 
+        # Without JSON-LD the dates have to come out of the markup, so show
+        # the elements a hand-written parser would target.
+        for element in soup.find_all("time")[:6]:
+            print(f"      <time datetime={element.get('datetime')!r}> "
+                  f"{_short(element.get_text(strip=True), 60)}")
+        seen = 0
+        for element in soup.find_all(attrs={"class": True}):
+            classes = " ".join(element.get("class"))
+            if "date" in classes.lower() and seen < 6:
+                print(f"      <{element.name} class={classes[:60]!r}> "
+                      f"{_short(element.get_text(strip=True), 60)}")
+                seen += 1
+        for meta in soup.find_all("meta"):
+            name = (meta.get("property") or meta.get("name") or "").lower()
+            if "date" in name or "time" in name:
+                print(f"      <meta {name}={_short(meta.get('content') or '', 60)!r}>")
+
     # Coordinates are the one field a destination cannot do without; if the
     # page carries them outside JSON-LD, say where.
     for meta in soup.find_all("meta"):

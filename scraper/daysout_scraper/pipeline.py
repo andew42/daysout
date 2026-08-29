@@ -51,10 +51,16 @@ def run_source(db, fetcher, source, max_pages=0):
             event["destination_source_id"] = destination
             if dbmod.upsert_event(db, source.name, event):
                 linked += 1
-        dbmod.purge_stale(db, source.name, run_start)
-        db.commit()
 
-        message = f"{places} places, {linked}/{events} events linked"
+        # Only a complete crawl knows what no longer exists. A bounded run
+        # (--max-pages, used for verification) has not looked at the rest of
+        # the source, so purging would delete rows that are still fine.
+        if max_pages:
+            message = f"{places} places, {linked}/{events} events linked (partial run, nothing purged)"
+        else:
+            dbmod.purge_stale(db, source.name, run_start)
+            message = f"{places} places, {linked}/{events} events linked"
+        db.commit()
         log.info("%s: %s", source.name, message)
         dbmod.finish_run(db, run_id, ok=True, message=message)
         return True, message

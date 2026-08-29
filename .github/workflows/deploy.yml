@@ -84,12 +84,9 @@ jobs:
         continue-on-error: true
         run: |
           cd /opt/daysout/scraper
-          for spec in "national_trust place" "national_trust event" "english_heritage event"; do
-            set -- $spec
-            echo "########## $1 / $2"
-            sudo env DAYSOUT_DATA=/var/lib/daysout \
-              python3 -m daysout_scraper.inspect --source "$1" --kind "$2" --count 2 || true
-          done
+          echo "########## english_heritage / event (event dates are not in JSON-LD)"
+          sudo env DAYSOUT_DATA=/var/lib/daysout \
+            python3 -m daysout_scraper.inspect --source english_heritage --kind event --count 2 || true
 
       - name: Result summary
         run: |
