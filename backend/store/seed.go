@@ -28,11 +28,19 @@ var seedDestinations = []struct {
 }
 
 // SeedIfEmpty populates demo destinations (plus a couple of events next
-// weekend) when the destinations table has no rows at all.
+// weekend) when the destinations table has no rows at all. One transaction:
+// a restart mid-seed (or two instances racing) must leave all or nothing,
+// never a half-seeded database that later boots treat as complete.
 func (s *Store) SeedIfEmpty() error {
 
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	var n int
-	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM destinations`).Scan(&n); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM destinations`).Scan(&n); err != nil {
 		return err
 	}
 	if n > 0 {
@@ -41,7 +49,7 @@ func (s *Store) SeedIfEmpty() error {
 
 	now := time.Now().Format(time.RFC3339)
 	for _, d := range seedDestinations {
-		_, err := s.DB.Exec(
+		_, err := tx.Exec(
 			`INSERT INTO destinations
 			   (name, category, description, url, postcode, lat, lon,
 			    source, source_id, first_seen, last_seen)
@@ -66,7 +74,7 @@ func (s *Store) SeedIfEmpty() error {
 		{"Lacock Abbey", "Village history weekend (demo seed data)", sat, sun},
 	}
 	for _, e := range demoEvents {
-		_, err := s.DB.Exec(
+		_, err := tx.Exec(
 			`INSERT INTO events
 			   (destination_id, title, description, url, start_date, end_date,
 			    source, source_id, last_seen)
@@ -79,6 +87,9 @@ func (s *Store) SeedIfEmpty() error {
 		}
 	}
 
+	if err := tx.Commit(); err != nil {
+		return err
+	}
 	slog.Info("seeded demo destinations", "count", len(seedDestinations))
 	return nil
 }

@@ -61,7 +61,10 @@ main() {
        "${INSTALL_DIR}"/daysout-scrape.service \
        "${INSTALL_DIR}"/daysout-scrape.timer /etc/systemd/system/
     systemctl daemon-reload
-    systemctl enable --now daysout
+    # enable (without --now) then one restart: enable --now followed by
+    # restart started the service twice back-to-back, and the restart could
+    # kill the first boot mid-way through seeding the database
+    systemctl enable daysout
     systemctl enable --now daysout-scrape.timer
     systemctl restart daysout
 

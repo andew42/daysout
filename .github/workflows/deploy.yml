@@ -63,12 +63,19 @@ jobs:
         run: sudo /opt/daysout/setup/get-tiles.sh --data-dir /var/lib/daysout
 
       - name: Verification scrape
-        if: ${{ inputs.scrape_max_pages != '0' }}
+        # inputs is empty on workflow_run triggers, so gate in shell rather
+        # than a step condition; default 5 pages per source.
         continue-on-error: true
+        env:
+          MAX_PAGES: ${{ inputs.scrape_max_pages || '5' }}
         run: |
+          if [ "$MAX_PAGES" = "0" ]; then
+            echo "scrape skipped (scrape_max_pages=0)"
+            exit 0
+          fi
           cd /opt/daysout/scraper
           sudo env DAYSOUT_DATA=/var/lib/daysout \
-            python3 -m daysout_scraper --max-pages "${{ inputs.scrape_max_pages || '5' }}" --keep-seed
+            python3 -m daysout_scraper --max-pages "$MAX_PAGES" --keep-seed
 
       - name: Result summary
         run: |
