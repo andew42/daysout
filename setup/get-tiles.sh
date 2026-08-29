@@ -1,7 +1,8 @@
 #!/bin/bash
 # Download the offline map: a PMTiles extract of Great Britain from the free
 # Protomaps daily planet build, plus the basemap fonts/sprites the style
-# needs. One-off (re-run occasionally if you want a fresher basemap).
+# needs. Safe to re-run: a complete, valid archive is kept; a partial one
+# from an interrupted download is re-fetched.
 #
 #   ./get-tiles.sh [--data-dir DIR] [--bbox minLon,minLat,maxLon,maxLat]
 #
@@ -27,8 +28,8 @@ done
 mkdir -p "$DATA_DIR"
 cd "$DATA_DIR"
 
-# The pmtiles CLI does the extract over HTTP range requests, so only the
-# tiles inside the bbox are downloaded.
+# The pmtiles CLI does the extract over HTTP range requests (only the tiles
+# inside the bbox are downloaded) and validates the finished archive.
 if ! command -v pmtiles >/dev/null && [ ! -x ./pmtiles ]; then
   ARCH="$(uname -m)"
   case "$ARCH" in
@@ -37,20 +38,48 @@ if ! command -v pmtiles >/dev/null && [ ! -x ./pmtiles ]; then
     *) echo "unsupported architecture $ARCH — install pmtiles manually" >&2; exit 1 ;;
   esac
   echo "downloading pmtiles CLI v$PMTILES_VERSION"
-  curl -fsSL "https://github.com/protomaps/go-pmtiles/releases/download/v${PMTILES_VERSION}/go-pmtiles_${PMTILES_VERSION}_${ASSET}.tar.gz" \
+  curl -fsSL --retry 4 --retry-delay 2 \
+    "https://github.com/protomaps/go-pmtiles/releases/download/v${PMTILES_VERSION}/go-pmtiles_${PMTILES_VERSION}_${ASSET}.tar.gz" \
     | tar -xz pmtiles
 fi
 PMTILES="$(command -v pmtiles || echo ./pmtiles)"
 
-# Yesterday's daily planet build (today's may not exist yet).
-BUILD="$(date -u -d yesterday +%Y%m%d)"
-echo "extracting bbox $BBOX from build $BUILD (this is the big download)"
-"$PMTILES" extract "https://build.protomaps.com/${BUILD}.pmtiles" uk.pmtiles --bbox="$BBOX"
+# A valid existing archive means this is a re-run — keep it. A file that
+# fails verification is a partial from an interrupted download — redo it.
+if [ -f uk.pmtiles ] && "$PMTILES" verify uk.pmtiles >/dev/null 2>&1; then
+  echo "uk.pmtiles already present and valid — skipping tile download"
+else
+  rm -f uk.pmtiles
+  # Yesterday's daily planet build (today's may not exist yet). Extract to a
+  # temp name and move into place only on success, so an interrupted run can
+  # never leave a partial file that looks complete.
+  BUILD="$(date -u -d yesterday +%Y%m%d)"
+  echo "extracting bbox $BBOX from build $BUILD (this is the big download)"
+  for attempt in 1 2 3; do
+    rm -f uk.pmtiles.partial
+    if "$PMTILES" extract "https://build.protomaps.com/${BUILD}.pmtiles" \
+         uk.pmtiles.partial --bbox="$BBOX"; then
+      mv uk.pmtiles.partial uk.pmtiles
+      break
+    fi
+    echo "extract attempt $attempt failed" >&2
+    if [ "$attempt" = 3 ]; then
+      echo "giving up after 3 attempts" >&2
+      exit 1
+    fi
+    sleep 15
+  done
+fi
 
 # Fonts and sprites for the basemap style, served locally at /basemap/.
-echo "downloading basemap fonts and sprites"
-rm -rf basemap basemap-assets-main
-curl -fsSL https://github.com/protomaps/basemaps-assets/archive/refs/heads/main.tar.gz | tar -xz
-mv basemaps-assets-main basemap
+if [ -d basemap/fonts ]; then
+  echo "basemap assets already present — skipping"
+else
+  echo "downloading basemap fonts and sprites"
+  rm -rf basemap basemaps-assets-main
+  curl -fsSL --retry 4 --retry-delay 2 \
+    https://github.com/protomaps/basemaps-assets/archive/refs/heads/main.tar.gz | tar -xz
+  mv basemaps-assets-main basemap
+fi
 
 echo "done: $(du -h uk.pmtiles | cut -f1) of tiles in $DATA_DIR/uk.pmtiles"

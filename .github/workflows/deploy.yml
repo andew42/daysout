@@ -58,12 +58,9 @@ jobs:
           fi
 
       - name: Download map tiles (first deploy only)
-        run: |
-          if [ -f /var/lib/daysout/uk.pmtiles ]; then
-            echo "uk.pmtiles already present — skipping"
-          else
-            sudo /opt/daysout/setup/get-tiles.sh --data-dir /var/lib/daysout
-          fi
+        # The script itself skips when a valid archive exists and re-fetches
+        # a partial one, so it's safe to run every deploy.
+        run: sudo /opt/daysout/setup/get-tiles.sh --data-dir /var/lib/daysout
 
       - name: Verification scrape
         if: ${{ inputs.scrape_max_pages != '0' }}
