@@ -1,0 +1,93 @@
+name: Deploy to house server
+
+# Runs on the self-hosted runner inside the daysout LXD container (see
+# docs/self-hosted-runner.md). Installs the latest rolling release exactly
+# as a user would, smoke-tests the live site, and runs a bounded
+# verification scrape from the home network. Dispatch-only so nothing from
+# a fork or PR can ever reach the runner.
+
+on:
+  workflow_dispatch:
+    inputs:
+      import_postcodes:
+        description: "Import Code-Point Open if the postcode table is empty (~25 MB)"
+        type: boolean
+        default: true
+      download_tiles:
+        description: "Download GB map tiles if missing (~2-3 GB, one-off)"
+        type: boolean
+        default: false
+      scrape_max_pages:
+        description: "Pages per source for the verification scrape (0 = skip)"
+        default: "5"
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Install latest release
+        run: |
+          curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/install.sh | sudo bash
+
+      - name: Smoke test
+        run: |
+          sleep 3
+          sudo systemctl --no-pager status daysout | head -8
+          curl -sf http://localhost:8080/api/status | tee /tmp/status.json
+          echo
+          curl -sf -o /dev/null -w "frontend: %{http_code}\n" http://localhost:8080/
+          curl -sf -o /dev/null -w "spa route: %{http_code}\n" http://localhost:8080/events
+          python3 -c "
+          import json
+          s = json.load(open('/tmp/status.json'))
+          assert s['destinations'] > 0, 'no destinations in database'
+          print('OK:', s['destinations'], 'destinations,', s['events'], 'events,',
+                s['postcodes'], 'postcodes, tiles:', s['tilesAvailable'])"
+
+      - name: Import postcodes
+        if: ${{ inputs.import_postcodes }}
+        run: |
+          COUNT=$(python3 -c "
+          import json; print(json.load(open('/tmp/status.json'))['postcodes'])")
+          if [ "$COUNT" -gt 0 ]; then
+            echo "postcode table already has $COUNT rows — skipping"
+          else
+            sudo python3 /opt/daysout/setup/import_postcodes.py --db /var/lib/daysout/daysout.db
+          fi
+
+      - name: Download map tiles
+        if: ${{ inputs.download_tiles }}
+        run: |
+          if [ -f /var/lib/daysout/uk.pmtiles ]; then
+            echo "uk.pmtiles already present — skipping"
+          else
+            sudo /opt/daysout/setup/get-tiles.sh --data-dir /var/lib/daysout
+          fi
+
+      - name: Verification scrape
+        if: ${{ inputs.scrape_max_pages != '0' }}
+        continue-on-error: true
+        run: |
+          cd /opt/daysout/scraper
+          sudo env DAYSOUT_DATA=/var/lib/daysout \
+            python3 -m daysout_scraper --max-pages "${{ inputs.scrape_max_pages }}" --keep-seed
+
+      - name: Result summary
+        run: |
+          echo "=== scrape runs ==="
+          sudo python3 -c "
+          import sqlite3
+          db = sqlite3.connect('/var/lib/daysout/daysout.db')
+          for row in db.execute(
+              'SELECT source, started_at, ok, message FROM scrape_runs ORDER BY id DESC LIMIT 6'):
+              print(row)
+          print('--- non-seed destinations by source:')
+          for row in db.execute(
+              \"SELECT source, COUNT(*) FROM destinations WHERE source != 'seed' GROUP BY source\"):
+              print(row)
+          print('--- sample:')
+          for row in db.execute(
+              \"SELECT name, category, postcode, lat, lon FROM destinations WHERE source != 'seed' LIMIT 8\"):
+              print(row)"
+          echo "=== live status ==="
+          curl -sf http://localhost:8080/api/status

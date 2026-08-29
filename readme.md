@@ -71,6 +71,11 @@ GL renders the offline vector tiles via the `pmtiles` protocol. CI builds
 everything on every push to `master` and republishes the rolling `latest`
 release the installer pulls from.
 
+For hands-off testing on the real house server, a self-hosted runner in
+the LXD container lets the **Deploy to house server** workflow install
+and smoke-test every build in place — setup in
+`docs/self-hosted-runner.md`.
+
 ## Data licensing
 
 - Map tiles: © [OpenStreetMap](https://www.openstreetmap.org/copyright)
