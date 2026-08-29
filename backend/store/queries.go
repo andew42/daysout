@@ -39,6 +39,7 @@ type Event struct {
 	URL         string      `json:"url"`
 	StartDate   string      `json:"startDate"`
 	EndDate     string      `json:"endDate"`
+	Category    string      `json:"category"`
 	Ongoing     bool        `json:"ongoing"`
 	Destination Destination `json:"destination"`
 }
@@ -164,6 +165,7 @@ func (s *Store) Events(lat, lon, maxMinutes float64, days int, categories []stri
 
 	rows, err := s.DB.Query(
 		`SELECT e.id, e.title, e.description, e.url, e.start_date, e.end_date,
+		        e.category,
 		        d.id, d.name, d.category, d.description, d.url, d.postcode,
 		        d.lat, d.lon, d.source
 		 FROM events e JOIN destinations d ON d.id = e.destination_id
@@ -179,7 +181,7 @@ func (s *Store) Events(lat, lon, maxMinutes float64, days int, categories []stri
 		var e Event
 		d := &e.Destination
 		if err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.URL,
-			&e.StartDate, &e.EndDate,
+			&e.StartDate, &e.EndDate, &e.Category,
 			&d.ID, &d.Name, &d.Category, &d.Description, &d.URL,
 			&d.Postcode, &d.Lat, &d.Lon, &d.Source); err != nil {
 			return nil, err

@@ -108,6 +108,15 @@ jobs:
           curl -s -o /dev/null -w "  sprite light.json:        %{http_code}\n" \
             http://localhost:8080/basemap/sprites/light.json
 
+      - name: Discover what candidate sources publish
+        # The development sandbox cannot reach these sites, so the probe
+        # runs here and its findings decide which extractor each source
+        # gets. Results are recorded in sources.last_status.
+        continue-on-error: true
+        run: |
+          cd /opt/daysout/scraper
+          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -m daysout_scraper.discover || true
+
       - name: Diagnose sources that found nothing
         # Prints what the pages of each source actually contain, so parser
         # or URL-pattern problems can be fixed against real markup. Cheap:

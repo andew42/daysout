@@ -17,6 +17,7 @@ from . import db as dbmod
 from . import sources
 from .fetch import Fetcher
 from .pipeline import run_source
+from .sources import feeds, seed_sources
 
 
 def default_db():
@@ -44,18 +45,22 @@ def main():
     if not Path(args.db).exists():
         sys.exit(f"database {args.db} not found — start the server once to create it")
 
-    selected = [s for s in sources.IMPLEMENTED
-                if not args.sources or s.name in args.sources.split(",")]
-    if not selected:
-        sys.exit(f"no matching sources; implemented: "
-                 f"{', '.join(s.name for s in sources.IMPLEMENTED)}")
-
     db = dbmod.connect(args.db)
     fetcher = Fetcher(args.cache or str(Path(args.db).parent / "scrape-cache"))
 
+    # Sources written in code, plus every enabled row of the sources table.
+    seed_sources.ensure(db)
+    wanted = args.sources.split(",") if args.sources else []
+    selected = [s() for s in sources.IMPLEMENTED if not wanted or s.name in wanted]
+    selected += [s for s in feeds.load_enabled(db) if not wanted or s.name in wanted]
+    if not selected:
+        available = [s.name for s in sources.IMPLEMENTED] + \
+                    [s.name for s in feeds.load_enabled(db)]
+        sys.exit(f"no matching sources; available: {', '.join(available)}")
+
     any_ok = False
-    for source_class in selected:
-        ok, _ = run_source(db, fetcher, source_class(), max_pages=args.max_pages)
+    for source in selected:
+        ok, _ = run_source(db, fetcher, source, max_pages=args.max_pages)
         any_ok = any_ok or ok
 
     if any_ok and not args.keep_seed:

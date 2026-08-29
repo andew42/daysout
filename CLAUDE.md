@@ -64,6 +64,24 @@ daysout/
   --kind place|event` prints what the parser actually sees on real pages.
   The dev sandbox can't reach these sites — the deploy workflow runs it on
   the house server and the output lands in the run log.
+- **Sources live in the database**, not only in code: the `sources` table
+  holds (name, url, kind, category, enabled). `sources/feeds.py` turns a
+  row into a runnable source, so adding a listing site is an INSERT.
+  `kind` is ical | jsonld | sitemap | auto; auto probes the URL via
+  `discover.py` and picks. `python3 -m daysout_scraper.discover` probes
+  every row and records what it found in `sources.last_status` — run from
+  the deploy workflow, since the sandbox can't reach the sites.
+- **Events bring their venues**: a listing site names a venue we've never
+  heard of, so `db.ensure_venue` geocodes its postcode against the local
+  postcode table and creates the destination. Without that a new source
+  contributes nothing sortable by distance. Structured
+  `location.address.postalCode` is preferred over regexing prose.
+- **`ensure_venue` must touch last_seen on an existing venue**, or the
+  end-of-run stale purge deletes the venue the event needs.
+- **The scraper tests read the schema from `backend/store/schema.go`**
+  (`tests/schema.py`) rather than keeping a copy — the copy drifted once
+  and broke tests for unrelated reasons. `schema.go` is the current shape;
+  `migrate.go` upgrades databases created before a column existed.
 - **Concurrency**: server and scraper share the DB via WAL mode.
 
 ## Gotchas

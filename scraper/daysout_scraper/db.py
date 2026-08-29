@@ -68,15 +68,16 @@ def upsert_event(db, source, event):
     db.execute(
         """INSERT INTO events
              (destination_id, title, description, url, start_date, end_date,
-              source, source_id, last_seen)
+              category, source, source_id, last_seen)
            VALUES (:destination_id, :title, :description, :url, :start_date,
-                   :end_date, :source, :source_id, :ts)
+                   :end_date, :category, :source, :source_id, :ts)
            ON CONFLICT (source, source_id) DO UPDATE SET
              destination_id = :destination_id, title = :title,
              description = :description, url = :url, start_date = :start_date,
-             end_date = :end_date, last_seen = :ts""",
+             end_date = :end_date, category = :category, last_seen = :ts""",
         {**event, "source": source, "ts": ts, "destination_id": row[0],
          "description": event.get("description", ""),
+         "category": event.get("category", ""),
          "url": event.get("url", "")})
     return True
 
@@ -94,6 +95,48 @@ def purge_seed(db):
     if n > 0:
         db.execute("DELETE FROM destinations WHERE source = 'seed'")
         db.execute("DELETE FROM events WHERE source = 'seed'")
+
+
+def ensure_venue(db, source, name, postcode, category="venue"):
+    """Make sure a destination exists for an event's venue, creating it from
+    the venue postcode when we have never seen the place before.
+
+    Events from listing sites name a venue that is usually not already a
+    destination. Geocoding it from the local postcode table means an event
+    brings its own location, so it can be sorted by distance like any
+    other — without which a new source contributes nothing usable.
+
+    Returns the destination source_id to link to, or None.
+    """
+    if not name:
+        return None
+
+    # Already known under this source: touch last_seen, or the stale purge
+    # at the end of the run deletes the venue we are about to attach an
+    # event to.
+    ts = now()
+    row = db.execute(
+        "SELECT source_id FROM destinations WHERE source = ? AND source_id = ?",
+        (source, name)).fetchone()
+    if row:
+        db.execute(
+            "UPDATE destinations SET last_seen = ? WHERE source = ? AND source_id = ?",
+            (ts, source, name))
+        return row[0]
+
+    coordinates = geocode(db, postcode) if postcode else None
+    if not coordinates:
+        return None
+
+    db.execute(
+        """INSERT INTO destinations
+             (name, category, description, url, postcode, lat, lon,
+              source, source_id, first_seen, last_seen)
+           VALUES (?, ?, '', '', ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (source, source_id) DO UPDATE SET last_seen = excluded.last_seen""",
+        (name, category, postcode, coordinates[0], coordinates[1],
+         source, name, ts, ts))
+    return name
 
 
 def geocode(db, postcode):

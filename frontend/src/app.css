@@ -91,6 +91,19 @@ body {
 .events-view { padding: 12px 16px; max-width: 760px; }
 .events-view h2 { font-size: 1.05rem; }
 .event-list { list-style: none; margin: 0; padding: 0; }
+.event-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 9px;
+  font-size: 0.66rem;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #ffffff;
+  vertical-align: 2px;
+}
 .events-subhead {
   margin: 28px 0 4px;
   font-size: 0.82rem;

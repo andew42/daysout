@@ -98,7 +98,14 @@ def parse_event(obj, page_url):
     if not name or not start:
         return None
     location = obj.get("location")
-    location_name = _text(location.get("name") if isinstance(location, dict) else location).strip()
+    if isinstance(location, dict):
+        location_name = _text(location.get("name")).strip()
+        # A structured address beats scraping a postcode out of prose.
+        location_postcode = _postcode(location)
+    else:
+        location_name = _text(location).strip()
+        location_postcode = ""
+
     return {
         "title": name,
         "description": _text(obj.get("description")).strip()[:400],
@@ -106,4 +113,5 @@ def parse_event(obj, page_url):
         "start_date": start,
         "end_date": _date(obj.get("endDate")) or start,
         "location_name": location_name,
+        "location_postcode": location_postcode,
     }

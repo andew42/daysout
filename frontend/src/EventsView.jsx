@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fetchEvents } from './api.jsx'
-import { loadSettings } from './settings.jsx'
+import { CATEGORY_COLORS, loadSettings } from './settings.jsx'
 
 function formatDate(iso) {
   return new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', {
@@ -34,7 +34,14 @@ export default function EventsView() {
     <li key={event.id} className="event-row">
       <div className="event-when">{dateRange(event)}</div>
       <div className="event-what">
-        <strong>{event.title}</strong>
+        <strong>
+          {event.title}
+          {event.category && (
+            <em className="event-tag" style={{ background: CATEGORY_COLORS[event.category] }}>
+              {event.category}
+            </em>
+          )}
+        </strong>
         <span>
           {event.destination.name} · ~{Math.round(event.destination.driveMinutes)} min drive
         </span>

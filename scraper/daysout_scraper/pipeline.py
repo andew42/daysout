@@ -32,10 +32,14 @@ def run_source(db, fetcher, source, max_pages=0):
                 pending_events.append(item)
         db.commit()
 
+        # A feed source contributes events and their venues rather than a
+        # catalogue of places, so "no places" is normal for it.
+        if places == 0 and pending_events:
+            pass
         # A run that found no places at all means the sitemap was unreachable
         # or the URL patterns no longer match — never a genuinely empty
         # source. Purging on that would wipe good data on a network blip.
-        if places == 0:
+        elif places == 0:
             message = ("no places found (source unreachable, blocked, or its "
                        "patterns/queries are wrong); nothing purged")
             log.warning("%s: %s", source.name, message)
@@ -47,6 +51,14 @@ def run_source(db, fetcher, source, max_pages=0):
             events += 1
             destination = source.link_event(event) or \
                 name_to_source_id.get(_normalise_name(event.get("location_name", "")))
+            if not destination:
+                # An event from a listing site names a venue we may never
+                # have seen. Create it from its postcode so the event has a
+                # location and can be sorted by distance.
+                destination = dbmod.ensure_venue(
+                    db, source.name, event.get("location_name", ""),
+                    event.get("venue_postcode", ""),
+                    event.get("category") or "venue")
             if not destination:
                 continue
             event["destination_source_id"] = destination

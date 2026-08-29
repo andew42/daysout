@@ -4,7 +4,7 @@ import { Protocol } from 'pmtiles'
 import { layers, namedFlavor } from '@protomaps/basemaps'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { fetchDestinations, fetchStatus } from './api.jsx'
-import { loadSettings } from './settings.jsx'
+import { CATEGORY_COLORS, loadSettings } from './settings.jsx'
 
 // Register the pmtiles:// protocol once for the whole app. Pass the handler
 // by reference: MapLibre calls it with (requestParameters, abortController)
@@ -12,12 +12,6 @@ import { loadSettings } from './settings.jsx'
 // makes every tile request throw and leaves the map silently blank.
 const protocol = new Protocol()
 maplibregl.addProtocol('pmtiles', protocol.tile)
-
-const categoryColors = {
-  'historic-house': '#8c4a2f',
-  garden: '#2f6b4e',
-  airfield: '#3a5da8',
-}
 
 // The sprite lives at a versioned path in the basemap assets, and which
 // version is current changes with the asset bundle. Probe rather than
@@ -180,7 +174,7 @@ export default function MapView() {
 
       for (const destination of result.destinations) {
         const marker = new maplibregl.Marker({
-          color: categoryColors[destination.category] || '#666666',
+          color: CATEGORY_COLORS[destination.category] || '#666666',
         })
           .setLngLat([destination.lon, destination.lat])
           .setPopup(new maplibregl.Popup({ maxWidth: '280px' }).setHTML(popupHTML(destination)))

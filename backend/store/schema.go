@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS events (
     url            TEXT NOT NULL DEFAULT '',
     start_date     TEXT NOT NULL,
     end_date       TEXT NOT NULL,
+    category       TEXT NOT NULL DEFAULT '',
     source         TEXT NOT NULL,
     source_id      TEXT NOT NULL,
     last_seen      TEXT NOT NULL,
@@ -38,6 +39,21 @@ CREATE TABLE IF NOT EXISTS postcodes (
     postcode TEXT PRIMARY KEY,
     lat      REAL NOT NULL,
     lon      REAL NOT NULL
+);
+
+-- Where events come from. Kept in the database rather than in code so a new
+-- listing site is a row, not a release: the scraper reads this table and
+-- picks an extractor by kind.
+CREATE TABLE IF NOT EXISTS sources (
+    id          INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,
+    url         TEXT NOT NULL,
+    kind        TEXT NOT NULL DEFAULT 'auto',  -- auto|ical|jsonld|sitemap
+    category    TEXT NOT NULL DEFAULT '',      -- default category for its events
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    notes       TEXT NOT NULL DEFAULT '',
+    added       TEXT NOT NULL,
+    last_status TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS scrape_runs (

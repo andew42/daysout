@@ -11,28 +11,7 @@ from daysout_scraper.pipeline import run_source
 from daysout_scraper.sitemap_source import sitemap_urls
 from daysout_scraper.sources.national_trust import NationalTrust
 
-# Mirror of the schema the Go server applies (backend/store/schema.go);
-# keep in sync if the schema changes.
-SCHEMA = """
-CREATE TABLE destinations (
-    id INTEGER PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '', url TEXT NOT NULL DEFAULT '',
-    postcode TEXT NOT NULL DEFAULT '', lat REAL NOT NULL, lon REAL NOT NULL,
-    source TEXT NOT NULL, source_id TEXT NOT NULL,
-    first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
-    UNIQUE (source, source_id));
-CREATE TABLE events (
-    id INTEGER PRIMARY KEY,
-    destination_id INTEGER NOT NULL REFERENCES destinations(id) ON DELETE CASCADE,
-    title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
-    url TEXT NOT NULL DEFAULT '', start_date TEXT NOT NULL, end_date TEXT NOT NULL,
-    source TEXT NOT NULL, source_id TEXT NOT NULL, last_seen TEXT NOT NULL,
-    UNIQUE (source, source_id));
-CREATE TABLE postcodes (postcode TEXT PRIMARY KEY, lat REAL NOT NULL, lon REAL NOT NULL);
-CREATE TABLE scrape_runs (
-    id INTEGER PRIMARY KEY, source TEXT NOT NULL, started_at TEXT NOT NULL,
-    finished_at TEXT, ok INTEGER, message TEXT NOT NULL DEFAULT '');
-"""
+from schema import SCHEMA  # the Go server's schema, read from source
 
 SITEMAP = """<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">

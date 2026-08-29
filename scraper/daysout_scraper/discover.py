@@ -1,0 +1,164 @@
+"""Work out how a site publishes its events.
+
+Given a URL, report which machine-readable formats it offers: an iCal
+feed, schema.org Event JSON-LD, an RSS/Atom feed, a sitemap. The scraper
+uses this to choose an extractor for a source whose kind is 'auto', and it
+doubles as the diagnostic for judging whether a candidate site is worth
+adding at all — the development sandbox cannot reach these sites, so the
+house server runs it and reports back.
+"""
+
+import logging
+import re
+from urllib.parse import urljoin, urlparse
+
+from bs4 import BeautifulSoup
+
+from . import ical, jsonld
+
+log = logging.getLogger(__name__)
+
+ICAL_HINT_RE = re.compile(r"\.ics(\?|$)|/ical|webcal:|format=ical", re.IGNORECASE)
+
+
+def probe(fetcher, url):
+    """Returns a report dict describing what this URL offers."""
+
+    report = {"url": url, "formats": [], "notes": [], "event_count": 0,
+              "ical_urls": [], "feed_urls": [], "sitemap_urls": []}
+
+    try:
+        body = fetcher.get(url)
+    except Exception as e:  # noqa: BLE001 — a probe reports failure, never raises
+        report["notes"].append(f"fetch failed: {e}")
+        return report
+
+    # An .ics response is its own answer.
+    if body.lstrip().startswith("BEGIN:VCALENDAR"):
+        events = list(ical.parse(body))
+        report["formats"].append("ical")
+        report["event_count"] = len(events)
+        report["notes"].append(f"iCal feed with {len(events)} event(s)")
+        return report
+
+    objects = jsonld.extract_objects(body)
+    events = [o for o in objects if jsonld.parse_event(o, url)]
+    if events:
+        report["formats"].append("jsonld")
+        report["event_count"] = len(events)
+        report["notes"].append(f"{len(events)} Event JSON-LD object(s) on the page itself")
+    elif objects:
+        types = sorted({str(o.get("@type")) for o in objects})
+        report["notes"].append(f"JSON-LD present but no Events: {', '.join(types[:6])}")
+
+    soup = BeautifulSoup(body, "html.parser")
+
+    # Calendar and feed links, both as <link rel=alternate> and plain hrefs.
+    for link in soup.find_all("link"):
+        href = link.get("href") or ""
+        link_type = (link.get("type") or "").lower()
+        if "calendar" in link_type or ICAL_HINT_RE.search(href):
+            report["ical_urls"].append(urljoin(url, href))
+        elif "rss" in link_type or "atom" in link_type:
+            report["feed_urls"].append(urljoin(url, href))
+    for anchor in soup.find_all("a", href=True):
+        if ICAL_HINT_RE.search(anchor["href"]):
+            report["ical_urls"].append(urljoin(url, anchor["href"]))
+
+    report["ical_urls"] = sorted(set(report["ical_urls"]))[:5]
+    report["feed_urls"] = sorted(set(report["feed_urls"]))[:5]
+    if report["ical_urls"]:
+        report["formats"].append("ical-link")
+    if report["feed_urls"]:
+        report["formats"].append("rss")
+
+    # A sitemap means the site can be crawled for per-event pages.
+    root = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+    for candidate in ("/sitemap.xml", "/sitemap_index.xml"):
+        try:
+            head = fetcher.get(root + candidate)[:400]
+        except Exception:  # noqa: BLE001 — absence is the normal case
+            continue
+        if "<urlset" in head or "<sitemapindex" in head:
+            report["sitemap_urls"].append(root + candidate)
+            report["formats"].append("sitemap")
+            break
+
+    if not report["formats"]:
+        report["notes"].append(
+            f"no machine-readable events found ({len(body)} bytes of HTML)")
+    return report
+
+
+def main():
+    """Probe every source in the table and record what each one offers."""
+
+    import argparse
+    import os
+    import sys
+    from pathlib import Path
+
+    from . import db as dbmod
+    from .fetch import Fetcher
+    from .sources import seed_sources
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--db", default="")
+    parser.add_argument("--url", default="", help="probe one URL instead of the table")
+    parser.add_argument("--disable-empty", action="store_true",
+                        help="disable sources that offer nothing usable")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+
+    data = os.environ.get("DAYSOUT_DATA") or "data"
+    path = args.db or str(Path(data) / "daysout.db")
+    if not Path(path).exists():
+        sys.exit(f"database {path} not found — start the server once to create it")
+
+    db = dbmod.connect(path)
+    fetcher = Fetcher(str(Path(path).parent / "scrape-cache"))
+
+    if args.url:
+        print(describe(probe(fetcher, args.url)))
+        return
+
+    added = seed_sources.ensure(db)
+    if added:
+        print(f"seeded {added} candidate source(s)")
+
+    rows = db.execute("SELECT name, url FROM sources ORDER BY name").fetchall()
+    print(f"probing {len(rows)} source(s)\n")
+    usable = 0
+    for name, url in rows:
+        report = probe(fetcher, url)
+        print(f"# {name}")
+        print(describe(report))
+        print()
+        status = ", ".join(report["formats"]) or "nothing usable"
+        db.execute("UPDATE sources SET last_status = ? WHERE name = ?", (status, name))
+        if report["formats"]:
+            usable += 1
+        elif args.disable_empty:
+            db.execute("UPDATE sources SET enabled = 0 WHERE name = ?", (name,))
+            print(f"  (disabled {name})\n")
+    db.commit()
+    print(f"{usable}/{len(rows)} source(s) publish something machine-readable")
+
+
+def describe(report):
+    """One readable block per probe, for the deploy log."""
+
+    lines = [f"=== {report['url']}"]
+    lines.append(f"    formats: {', '.join(report['formats']) or 'none'}")
+    for note in report["notes"]:
+        lines.append(f"    {note}")
+    for key, label in (("ical_urls", "iCal"), ("feed_urls", "feed"),
+                       ("sitemap_urls", "sitemap")):
+        for found in report[key]:
+            lines.append(f"    {label}: {found}")
+    return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    main()
