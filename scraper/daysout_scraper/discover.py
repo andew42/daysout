@@ -107,6 +107,10 @@ def main():
     parser.add_argument("--url", default="", help="probe one URL instead of the table")
     parser.add_argument("--disable-empty", action="store_true",
                         help="disable sources that offer nothing usable")
+    parser.add_argument("--all", action="store_true",
+                        help="also probe disabled sources (their verdicts are "
+                             "already recorded in notes; re-probing them costs "
+                             "a minute and buries the live output in noise)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -127,8 +131,14 @@ def main():
     if added:
         print(f"seeded {added} candidate source(s)")
 
-    rows = db.execute("SELECT name, url FROM sources ORDER BY name").fetchall()
-    print(f"probing {len(rows)} source(s)\n")
+    query = "SELECT name, url FROM sources"
+    if not args.all:
+        query += " WHERE enabled = 1"
+    rows = db.execute(query + " ORDER BY name").fetchall()
+    disabled = db.execute(
+        "SELECT COUNT(*) FROM sources WHERE enabled = 0").fetchone()[0]
+    print(f"probing {len(rows)} enabled source(s)"
+          f"{f', skipping {disabled} disabled (--all to include)' if disabled and not args.all else ''}\n")
     usable = 0
     for name, url in rows:
         report = probe(fetcher, url)
