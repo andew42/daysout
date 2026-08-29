@@ -84,9 +84,10 @@ jobs:
         continue-on-error: true
         run: |
           cd /opt/daysout/scraper
-          echo "########## english_heritage sitemap URL shapes (where do dated events live?)"
+          echo "########## english_heritage newest what's-on pages (do current ones carry dates?)"
           sudo env DAYSOUT_DATA=/var/lib/daysout \
-            python3 -m daysout_scraper.inspect --source english_heritage --url-shapes || true
+            python3 -m daysout_scraper.inspect --source english_heritage \
+              --kind event --newest --count 3 || true
 
       - name: Result summary
         run: |

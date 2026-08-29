@@ -15,8 +15,13 @@ log = logging.getLogger(__name__)
 SITEMAP_NS = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
 
 
-def sitemap_urls(fetcher, sitemap_url, depth=0):
-    """All page URLs in a sitemap, following nested sitemap indexes."""
+def sitemap_urls(fetcher, sitemap_url, depth=0, with_lastmod=False):
+    """All page URLs in a sitemap, following nested sitemap indexes.
+
+    With with_lastmod, yields (url, lastmod) pairs — lastmod is '' when the
+    sitemap omits it. Useful for looking at a site's *current* pages rather
+    than whichever ones happen to come first.
+    """
     if depth > 2:
         return
     try:
@@ -28,11 +33,15 @@ def sitemap_urls(fetcher, sitemap_url, depth=0):
         if element.tag == SITEMAP_NS + "sitemap":
             loc = element.find(SITEMAP_NS + "loc")
             if loc is not None and loc.text:
-                yield from sitemap_urls(fetcher, loc.text.strip(), depth + 1)
+                yield from sitemap_urls(fetcher, loc.text.strip(), depth + 1, with_lastmod)
         elif element.tag == SITEMAP_NS + "url":
             loc = element.find(SITEMAP_NS + "loc")
             if loc is not None and loc.text:
-                yield loc.text.strip()
+                if with_lastmod:
+                    lastmod = element.find(SITEMAP_NS + "lastmod")
+                    yield loc.text.strip(), (lastmod.text or "").strip() if lastmod is not None else ""
+                else:
+                    yield loc.text.strip()
 
 
 class SitemapJsonLdSource:

@@ -2,6 +2,7 @@
 User-Agent, and an on-disk cache so re-runs don't hammer the sources."""
 
 import hashlib
+import logging
 import time
 import urllib.robotparser
 from pathlib import Path
@@ -9,12 +10,20 @@ from urllib.parse import urlparse
 
 import requests
 
+log = logging.getLogger(__name__)
+
 USER_AGENT = ("daysout-scraper/0.1 "
               "(personal days-out planner; low volume; "
               "https://github.com/andew42/daysout)")
 
 REQUEST_INTERVAL_SECONDS = 1.0
 CACHE_TTL_SECONDS = 20 * 60 * 60  # just under a day so daily runs refetch
+
+# Transient server-side conditions worth waiting out (never 4xx except 429:
+# those mean the request itself is wrong, and retrying just adds load).
+RETRY_STATUS = {429, 500, 502, 503, 504}
+RETRY_ATTEMPTS = 3
+RETRY_BACKOFF_SECONDS = 5
 
 
 class Fetcher:
@@ -65,8 +74,19 @@ class Fetcher:
         if not api and not self._allowed(url):
             raise FetchDisallowed(f"robots.txt disallows {url}")
 
-        self._throttle(url)
-        response = self.session.get(url, timeout=60)
+        # Busy or rate-limited is a "come back shortly", not a failure: a
+        # shared query service returning 502 for one request is routine and
+        # shouldn't lose a whole category for the day.
+        for attempt in range(RETRY_ATTEMPTS):
+            self._throttle(url)
+            response = self.session.get(url, timeout=60)
+            if response.status_code not in RETRY_STATUS or attempt == RETRY_ATTEMPTS - 1:
+                break
+            delay = RETRY_BACKOFF_SECONDS * (2 ** attempt)
+            log.info("%s returned %d, retrying in %.0fs",
+                     urlparse(url).netloc, response.status_code, delay)
+            time.sleep(delay)
+
         response.raise_for_status()
         cache_file.write_text(response.text, encoding="utf-8")
         return response.text

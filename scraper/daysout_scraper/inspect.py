@@ -126,6 +126,10 @@ def main():
     parser.add_argument("--url-shapes", action="store_true",
                         help="summarise the sitemap by URL shape instead of "
                              "inspecting pages")
+    parser.add_argument("--newest", action="store_true",
+                        help="inspect the most recently modified pages rather "
+                             "than the first ones in the sitemap (the first "
+                             "ones are often years out of date)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
@@ -144,20 +148,24 @@ def main():
         url_shapes(fetcher, source)
         return
 
-    found = 0
+    candidates = []
     for sitemap in source.sitemaps:
-        for url in sitemap_urls(fetcher, sitemap):
-            if source.classify(url) != args.kind:
-                continue
-            try:
-                describe(fetcher.get(url), url)
-            except Exception as e:  # noqa: BLE001 — diagnostics never fail the caller
-                print(f"\n=== {url}\n    FETCH FAILED: {e}")
-            found += 1
-            if found >= args.count:
-                return
-    if found == 0:
+        for url, lastmod in sitemap_urls(fetcher, sitemap, with_lastmod=True):
+            if source.classify(url) == args.kind:
+                candidates.append((lastmod, url))
+
+    if not candidates:
         print(f"no {args.kind} URLs matched in the sitemap(s) for {args.source}")
+        return
+    if args.newest:
+        candidates.sort(reverse=True)  # ISO 8601 sorts correctly as text
+
+    for lastmod, url in candidates[:args.count]:
+        try:
+            describe(fetcher.get(url), url)
+            print(f"    sitemap lastmod: {lastmod or '(none)'}")
+        except Exception as e:  # noqa: BLE001 — diagnostics never fail the caller
+            print(f"\n=== {url}\n    FETCH FAILED: {e}")
 
 
 if __name__ == "__main__":

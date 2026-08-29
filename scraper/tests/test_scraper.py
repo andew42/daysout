@@ -8,6 +8,7 @@ import unittest
 
 from daysout_scraper import db as dbmod
 from daysout_scraper.pipeline import run_source
+from daysout_scraper.sitemap_source import sitemap_urls
 from daysout_scraper.sources.national_trust import NationalTrust
 
 # Mirror of the schema the Go server applies (backend/store/schema.go);
@@ -134,6 +135,32 @@ class ScraperTest(unittest.TestCase):
             self.db.execute("SELECT COUNT(*) FROM destinations").fetchone()[0], 1)
         self.assertEqual(
             self.db.execute("SELECT COUNT(*) FROM events").fetchone()[0], 1)
+
+    def test_sitemap_lastmod_orders_newest_first(self):
+        sitemap = """<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://www.nationaltrust.org.uk/visit/a/stale</loc>
+       <lastmod>2024-01-02</lastmod></url>
+  <url><loc>https://www.nationaltrust.org.uk/visit/b/current</loc>
+       <lastmod>2026-08-01</lastmod></url>
+  <url><loc>https://www.nationaltrust.org.uk/visit/c/undated</loc></url>
+</urlset>"""
+
+        class F:
+            def get(self, url, api=False):
+                return sitemap
+
+        pairs = list(sitemap_urls(F(), "s", with_lastmod=True))
+        self.assertEqual(len(pairs), 3)
+        self.assertEqual(dict(pairs)["https://www.nationaltrust.org.uk/visit/b/current"],
+                         "2026-08-01")
+        self.assertEqual(dict(pairs)["https://www.nationaltrust.org.uk/visit/c/undated"], "")
+
+        # The inspector keys on (lastmod, url) so a reverse sort is
+        # newest-first; keyed the other way it would sort by URL instead.
+        candidates = sorted(((mod, url) for url, mod in pairs), reverse=True)
+        self.assertEqual(candidates[0][1],
+                         "https://www.nationaltrust.org.uk/visit/b/current")
 
     def test_seed_purged_after_real_data(self):
         self.db.execute(
