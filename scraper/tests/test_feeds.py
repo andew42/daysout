@@ -169,6 +169,27 @@ class FeedSourceTest(unittest.TestCase):
         self.assertEqual(
             self.db.execute("SELECT COUNT(*) FROM destinations").fetchone()[0], 1)
 
+    def test_name_matching_is_tolerant_but_not_reckless(self):
+        for name in ("Audley End House and Gardens", "Corsham Court",
+                     "Bath Abbey", "Lacock Abbey"):
+            self.db.execute(
+                "INSERT INTO destinations (name, category, lat, lon, source,"
+                " source_id, first_seen, last_seen) VALUES (?, 'x', 1, 1,"
+                " 'wikidata', ?, 'x', 'x')", (name, name))
+        self.db.commit()
+
+        # A qualified form of a distinctive name resolves.
+        self.assertIsNotNone(
+            dbmod.find_destination_id_by_name(self.db, "Audley End"))
+        # An exact name resolves.
+        self.assertIsNotNone(
+            dbmod.find_destination_id_by_name(self.db, "Corsham Court"))
+        # "Abbey" matches two places, so it must not guess between them.
+        self.assertIsNone(dbmod.find_destination_id_by_name(self.db, "Abbey"))
+        # A name we simply don't hold stays unmatched.
+        self.assertIsNone(
+            dbmod.find_destination_id_by_name(self.db, "Somewhere Else Entirely"))
+
     def test_load_enabled_skips_disabled_rows(self):
         self.db.execute(
             "INSERT INTO sources (name, url, kind, category, enabled, added) "

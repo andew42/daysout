@@ -56,6 +56,9 @@ def upsert_destination(db, source, dest):
          "url": dest.get("url", ""), "postcode": dest.get("postcode", "")})
 
 
+MIN_CONTAINMENT_MATCH = 8
+
+
 def normalise_name(name):
     """Loose key for matching venue names across sources."""
     return re.sub(r"[^a-z0-9]", "", (name or "").lower())
@@ -79,11 +82,28 @@ def find_destination_id_by_name(db, name):
     key = normalise_name(name)
     if len(key) < 4:  # too short to be a confident match
         return None
-    for destination_id, candidate in db.execute(
-            "SELECT id, name FROM destinations").fetchall():
-        if normalise_name(candidate) == key:
+
+    rows = [(destination_id, normalise_name(candidate))
+            for destination_id, candidate in
+            db.execute("SELECT id, name FROM destinations").fetchall()]
+
+    for destination_id, candidate in rows:
+        if candidate == key:
             return destination_id
-    return None
+
+    # Sites qualify names differently — "RHS Garden Wisley" against a
+    # catalogue's "Wisley", "Audley End" against "Audley End House and
+    # Gardens". Accept one name containing the other, but only for a name
+    # long enough to be distinctive and only when exactly one destination
+    # matches, so a common word can't attach an event to the wrong place.
+    # Eight characters keeps real names like "Audley End" (audleyend) while
+    # excluding words like "Abbey" that many places share.
+    if len(key) < MIN_CONTAINMENT_MATCH:
+        return None
+    matches = {destination_id for destination_id, candidate in rows
+               if len(candidate) >= MIN_CONTAINMENT_MATCH
+               and (key in candidate or candidate in key)}
+    return matches.pop() if len(matches) == 1 else None
 
 
 def touch_destination(db, destination_id, source):

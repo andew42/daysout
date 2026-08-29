@@ -23,6 +23,7 @@ def run_source(db, fetcher, source, max_pages=0):
 
     try:
         pending_events = []
+        unplaced = []
         for kind, item in source.scrape(fetcher, max_pages=max_pages):
             if kind == "place":
                 dbmod.upsert_destination(db, source.name, item)
@@ -72,6 +73,14 @@ def run_source(db, fetcher, source, max_pages=0):
                     destination_id = dbmod.find_destination_id(db, source.name, created)
 
             if destination_id is None:
+                # Record what we couldn't place and why: an event with no
+                # venue at all is a different problem from one naming a
+                # venue we don't hold, and the counts alone can't tell them
+                # apart.
+                unplaced.append(
+                    f"{event.get('title', '?')[:40]!r} @ "
+                    f"{venue_name or '(no venue named)'}"
+                    f"{' postcode ' + event['venue_postcode'] if event.get('venue_postcode') else ''}")
                 continue
             dbmod.touch_destination(db, destination_id, source.name)
             if dbmod.upsert_event(db, source.name, event, destination_id):
@@ -87,6 +96,8 @@ def run_source(db, fetcher, source, max_pages=0):
             message = f"{places} places, {linked}/{events} events linked"
         db.commit()
         log.info("%s: %s", source.name, message)
+        for description in unplaced[:10]:
+            log.info("%s: could not place %s", source.name, description)
         dbmod.finish_run(db, run_id, ok=True, message=message)
         return True, message
     except Exception as e:  # noqa: BLE001 — record the failure, don't crash the run
