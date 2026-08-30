@@ -179,8 +179,12 @@ jobs:
         continue-on-error: true
         run: |
           cd /opt/daysout/scraper
-          for URL in https://ngs.org.uk/gardens-open-this-coming-week/ \
-                     https://www.historichouses.org/houses/whats-on/ ; do
+          # The "this coming week" page turned out to be a hub: rendering
+          # doubles it (110k -> 240k bytes) but it carries no dates, only
+          # "Click here" links to a page per region. So probe a region page
+          # — that is where a listing, if there is one, has to be.
+          for URL in https://ngs.org.uk/garden-open-this-week-east-of-england/ \
+                     https://ngs.org.uk/gardens-open-this-week-midlands/ ; do
             sudo env DAYSOUT_DATA=/var/lib/daysout \
               python3 -m daysout_scraper.discover --url "$URL" --browser || true
             echo
@@ -221,15 +225,21 @@ jobs:
           db = sqlite3.connect('/var/lib/daysout/daysout.db')
           today = datetime.date.today().isoformat()
           horizon = (datetime.date.today() + datetime.timedelta(days=7)).isoformat()
+          # Order as the site does — one-off events before standing
+          # programmes (backend/store/queries.go, OngoingDays = 14).
+          # Sorting by start date alone showed ten year-long programmes and
+          # hid the jousts happening that very weekend, which is exactly
+          # the failure this check exists to catch.
           rows = db.execute(
-              'SELECT e.start_date, e.end_date, e.title, d.name, d.postcode '
+              'SELECT e.start_date, e.end_date, e.title, d.name, d.postcode, '
+              \"  julianday(e.end_date) - julianday(e.start_date) > 14 AS ongoing \"
               'FROM events e JOIN destinations d ON d.id = e.destination_id '
               'WHERE e.end_date >= ? AND e.start_date <= ? '
-              'ORDER BY e.start_date LIMIT 10', (today, horizon)).fetchall()
+              'ORDER BY ongoing, e.start_date LIMIT 10', (today, horizon)).fetchall()
           print(f'{len(rows)} event(s) in the next 7 days (showing up to 10):')
-          for start, end, title, place, postcode in rows:
+          for start, end, title, place, postcode, ongoing in rows:
               when = start if start == end else f'{start}..{end}'
-              print(f'  {when}  {title}  @ {place} {postcode}')
+              print(f'  {\"[ongoing] \" if ongoing else \"\"}{when}  {title}  @ {place} {postcode}')
           if not rows:
               print('  NONE — check whether scraped events are all in the past')"
           echo "=== live status ==="

@@ -12,9 +12,8 @@ sorting work for sites we have never seen before.
 """
 
 import logging
-import re
 
-from .. import discover, domscan, ical, jsonld
+from .. import discover, domscan, ical, jsonld, postcode
 from ..sitemap_source import sitemap_urls
 
 log = logging.getLogger(__name__)
@@ -31,19 +30,10 @@ DEFAULT_SITEMAP_PAGES = 50
 # own links.
 EVENT_URL_HINT_RE = domscan.EVENT_URL_HINT_RE
 
-# "Bolsover Castle, Castle Street, Bolsover, S44 6PR" -> S44 6PR
-POSTCODE_RE = re.compile(
-    r"\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b", re.IGNORECASE)
-
-
-def find_postcode(*texts):
-    for text in texts:
-        if not text:
-            continue
-        match = POSTCODE_RE.search(text)
-        if match:
-            return f"{match.group(1).upper()} {match.group(2).upper()}"
-    return ""
+# "Bolsover Castle, Castle Street, Bolsover, S44 6PR" -> S44 6PR.
+# Shared with the pipeline, which digs for a postcode the same way for
+# sources written in code.
+find_postcode = postcode.find
 
 
 class FeedSource:

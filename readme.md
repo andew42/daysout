@@ -35,8 +35,8 @@ result is worth knowing before adding more:
 | Source | Result |
 |--------|--------|
 | English Heritage | **Works** — 392 properties, ~119 events, Event JSON-LD per page |
-| RHS | Publishes Event JSON-LD; events read but not yet placed at a venue |
-| NGS (open gardens, garden finder) | Sitemap only — no Event JSON-LD; open-day dates are client-side |
+| RHS | **Works** — five flower shows; they publish a postcode with no venue name, so the venue is created from it |
+| NGS (open gardens, garden finder) | Sitemap only. Rendering the "open this week" page doubles it (110k → 240k bytes) but it is a hub: no dates, just a link per region |
 | Historic Houses, Invitation to View | Sitemap only — WebPage/Article JSON-LD, no events |
 | Brighton Open Houses, Creative Crafts | Sitemap (and RSS) but no Event JSON-LD |
 | The Festival Calendar (art/food/music) | Sitemap only, no Event JSON-LD |

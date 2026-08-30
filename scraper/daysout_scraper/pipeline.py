@@ -6,12 +6,41 @@ import logging
 import re
 
 from . import db as dbmod
+from . import postcode as postcodemod
 
 log = logging.getLogger(__name__)
 
 
 def _normalise_name(name):
     return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
+def _venue(event):
+    """Where an event happens: (display name, postcode, label to create by).
+
+    Sources disagree on shape and the disagreement was losing events. A
+    feed row hands over a trimmed name and a 'venue_postcode'; a source
+    written in code yields the raw JSON-LD fields, so its postcode arrives
+    as 'location_postcode' and its location name is the whole address line
+    ("Manchester Central Library, St Peters Square, Manchester M2 5PD").
+    Read both spellings, take the first comma-separated part as the name,
+    and fall back to digging the postcode out of the address prose.
+
+    Some sites publish an address with no venue name at all — RHS gives
+    every flower show a postalCode and no location.name — so when there is
+    a postcode but nothing to call the place, the event's own title is the
+    label. It is a name of convenience rather than a real venue name, but
+    a show pinned at the right postcode is what the map is for; the
+    alternative was dropping five flower shows over a missing field.
+    """
+
+    full = event.get("venue_full") or event.get("location_name") or ""
+    name = full.split(",")[0].strip()
+    postcode = (event.get("venue_postcode")
+                or event.get("location_postcode")
+                or postcodemod.find(full, event.get("description", "")))
+    label = name or (event.get("title", "").strip() if postcode else "")
+    return name, postcode, label
 
 
 def run_source(db, fetcher, source, max_pages=0):
@@ -50,7 +79,7 @@ def run_source(db, fetcher, source, max_pages=0):
         # Events last so every place of this run is available to link against.
         for event in pending_events:
             events += 1
-            venue_name = event.get("location_name", "")
+            venue_name, venue_postcode, venue_label = _venue(event)
 
             # Where does this event happen? In order of confidence: the
             # source says so, a place from this run matches by name, a
@@ -65,9 +94,11 @@ def run_source(db, fetcher, source, max_pages=0):
                 destination_id = dbmod.find_destination_id_by_name(db, venue_name)
 
             if destination_id is None:
+                # Matching by name uses only a name the site actually
+                # published; the title fallback is for creating a venue,
+                # never for claiming an event belongs to a place we hold.
                 created = dbmod.ensure_venue(
-                    db, source.name, venue_name,
-                    event.get("venue_postcode", ""),
+                    db, source.name, venue_label, venue_postcode,
                     event.get("category") or "venue")
                 if created:
                     destination_id = dbmod.find_destination_id(db, source.name, created)
@@ -79,8 +110,8 @@ def run_source(db, fetcher, source, max_pages=0):
                 # apart.
                 unplaced.append(
                     f"{event.get('title', '?')[:40]!r} @ "
-                    f"{venue_name or '(no venue named)'}"
-                    f"{' postcode ' + event['venue_postcode'] if event.get('venue_postcode') else ''}")
+                    f"{venue_name or '(no venue named)'} "
+                    f"{'postcode ' + venue_postcode if venue_postcode else '(no postcode)'}")
                 continue
             dbmod.touch_destination(db, destination_id, source.name)
             if dbmod.upsert_event(db, source.name, event, destination_id):

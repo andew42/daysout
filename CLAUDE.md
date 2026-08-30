@@ -100,6 +100,17 @@ daysout/
   `location.address.postalCode` is preferred over regexing prose.
 - **`ensure_venue` must touch last_seen on an existing venue**, or the
   end-of-run stale purge deletes the venue the event needs.
+- **`pipeline._venue` is the one place that decides where an event happens.**
+  Sources disagree on shape and the disagreement silently lost events: a
+  feed row gives `venue_postcode` and a trimmed name, a code source gives
+  the raw JSON-LD (`location_postcode`, and a `location_name` that is the
+  whole address line). It reads both, takes the first comma-separated part
+  as the name, digs the postcode out of the address prose as a last
+  resort, and — when a site publishes a postcode but no venue name at all,
+  as RHS does for every flower show — labels the venue with the event's
+  own title so the show still lands at the right postcode. The title is
+  only ever used to *create* a venue, never to claim an event belongs to a
+  place we already hold.
 - **The scraper tests read the schema from `backend/store/schema.go`**
   (`tests/schema.py`) rather than keeping a copy — the copy drifted once
   and broke tests for unrelated reasons. `schema.go` is the current shape;
