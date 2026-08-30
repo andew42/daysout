@@ -254,3 +254,48 @@ def describe_deep(report, indent="    "):
     for text in report["longest"]:
         line(f"    {text}")
     return "\n".join(lines)
+
+
+def date_context(html, limit=12):
+    """Where each date-looking phrase actually sits in the markup.
+
+    Knowing a page "has date-looking text" is not enough to parse it: the
+    same page carries the event's own date, a list of other events' dates
+    and an opening-times table, and only the surrounding markup tells them
+    apart. Yields (tag, identifier, phrase, surrounding text) for the
+    smallest element containing each phrase, which is what a parser would
+    have to key on.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup.find_all(["script", "style"]):
+        tag.decompose()
+
+    seen = set()
+    out = []
+    for element in soup.find_all(string=DATE_TEXT_RE):
+        phrase_match = DATE_TEXT_RE.search(str(element))
+        if not phrase_match:
+            continue
+        phrase = phrase_match.group(0)
+        parent = element.parent
+        if parent is None:
+            continue
+        identifier = " ".join(parent.get("class", [])) or parent.get("id", "")
+        key = (parent.name, identifier, phrase.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((parent.name, identifier, phrase,
+                    _short(parent.get_text(" ", strip=True), 90)))
+        if len(out) >= limit:
+            break
+    return out
+
+
+def describe_date_context(rows):
+    lines = [f"  {len(rows)} place(s) a date appears, innermost element first:"]
+    for tag, identifier, phrase, text in rows:
+        where = f"<{tag}{' class=' + identifier if identifier else ''}>"
+        lines.append(f"    {phrase!r:28} in {where}")
+        lines.append(f"        {text}")
+    return "\n".join(lines)

@@ -62,3 +62,34 @@ class TestDeepScan(unittest.TestCase):
         self.assertIn("form action=/find", described[1])
         self.assertIn("iframes: none", described[0])
         self.assertIn("no repeated row-shaped content", described[1])
+
+
+class TestDateContext(unittest.TestCase):
+    """Where a date sits, not just that one is present.
+
+    A Shuttleworth event page carries seven date-looking phrases: the
+    event's own, other events' in a carousel, and opening times. "Has
+    date-looking text" cannot tell them apart; the enclosing element can.
+    """
+
+    PAGE = """<html><body>
+      <h1>Military Air Show</h1>
+      <div class="panel--content"><span class="event-date">6 September</span></div>
+      <div class="opening"><p>Open today: 09:00 - 17:00 until 4 October</p></div>
+      <ul class="other-events">
+        <li><a href="/events/x"><span class="event-date">31 October</span></a></li>
+      </ul>
+    </body></html>"""
+
+    def test_it_reports_the_element_each_date_sits_in(self):
+        rows = domscan.date_context(self.PAGE)
+        found = {(phrase, tag, identifier)
+                 for tag, identifier, phrase, _ in rows}
+        self.assertIn(("6 September", "span", "event-date"), found)
+        self.assertIn(("4 October", "p", ""), found)
+
+    def test_scripts_are_not_mistaken_for_content(self):
+        page = ('<html><body><script>var d = "6 September"</script>'
+                '<p class="when">7 September</p></body></html>')
+        rows = domscan.date_context(page)
+        self.assertEqual([(r[2], r[1]) for r in rows], [("7 September", "when")])

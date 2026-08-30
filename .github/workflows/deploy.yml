@@ -417,6 +417,80 @@ jobs:
           if missing:
               print('WARNING:', len(missing), 'venue(s) still have no url')"
 
+      - name: Why a source or an event is missing
+        # Three questions that took a deploy each to answer: which sources
+        # the table actually holds (a missing row and a failing row look
+        # identical from the UI), what dates the small sources' events
+        # carry, and what the Events tab returns at the settings in use
+        # rather than at the defaults.
+        continue-on-error: true
+        run: |
+          echo "########## the sources table"
+          sudo python3 -c "
+          import sqlite3
+          db = sqlite3.connect('/var/lib/daysout/daysout.db')
+          rows = db.execute(
+              'SELECT name, kind, enabled, url FROM sources ORDER BY name').fetchall()
+          print(len(rows), 'row(s):')
+          for name, kind, enabled, url in rows:
+              print(f'  {\"on \" if enabled else \"OFF\"} {name:26} {kind:9} {url}')
+          removed = [r[0] for r in db.execute('SELECT name FROM removed_sources')]
+          print('removed_sources:', ', '.join(removed) or '(none)')
+          runs = [r[0] for r in db.execute(
+              'SELECT DISTINCT source FROM scrape_runs')]
+          orphans = sorted(set(runs) - {r[0] for r in rows})
+          print('have run but hold no row:', ', '.join(orphans) or '(none)')"
+
+          echo "########## events by source, with dates"
+          sudo python3 -c "
+          import sqlite3
+          db = sqlite3.connect('/var/lib/daysout/daysout.db')
+          for source, count in db.execute(
+              \"SELECT source, COUNT(*) FROM events GROUP BY source ORDER BY source\"):
+              print(f'  {source}: {count}')
+          print()
+          for source, start, end, title in db.execute(
+              \"SELECT source, start_date, end_date, title FROM events\"
+              \" WHERE source != 'english_heritage' ORDER BY source, start_date\"):
+              when = start if start == end else f'{start}..{end}'
+              print(f'  [{source}] {when}  {title[:60]}')"
+
+          echo "########## /api/events at the settings actually in use"
+          for LIMIT in 60 120; do
+            for DAYS in 7 30; do
+              curl -sf --get http://localhost:8080/api/events \
+                --data-urlencode "postcode=SN13 8AA" \
+                --data-urlencode "minutes=$LIMIT" --data-urlencode "days=$DAYS" \
+                -o /tmp/e.json || continue
+              python3 -c "
+          import json
+          b = json.load(open('/tmp/e.json'))
+          x = b.get('excluded', {})
+          print(f\"  {b['minutes']:>3.0f} min / {b['days']:>2} days ->\"
+                f\" {len(b['events']):>3} shown,\"
+                f\" {x.get('tooFar', 0)} too far, {x.get('later', 0)} later\")
+          for e in b['events']:
+              if e['destination']['name'] in ('Stonor Park',):
+                  print('      Stonor:', e['startDate'], e['title'][:40])"
+            done
+          done
+
+          echo "########## where dates sit on a Shuttleworth event page"
+          cd /opt/daysout/scraper
+          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -c "
+          import sys; sys.path.insert(0, '.')
+          from daysout_scraper.fetch import Fetcher
+          from daysout_scraper import domscan
+          fetcher = Fetcher('/var/lib/daysout/scrape-cache')
+          for url in ['https://www.shuttleworth.org/events/military-air-show-2026',
+                      'https://www.shuttleworth.org/events/christmas-market-at-shuttleworth-house']:
+              print('===', url)
+              try:
+                  print(domscan.describe_date_context(
+                      domscan.date_context(fetcher.get(url), limit=10)))
+              except Exception as e:
+                  print('   failed:', e)" || true
+
       - name: Result summary
         run: |
           echo "=== scrape runs ==="
