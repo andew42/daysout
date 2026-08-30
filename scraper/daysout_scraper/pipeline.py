@@ -48,6 +48,7 @@ def run_source(db, fetcher, source, max_pages=0):
     run_id = dbmod.start_run(db, source.name)
     run_start = dbmod.now()
     places = events = linked = 0
+    venues = set()
     name_to_source_id = {}
 
     try:
@@ -125,15 +126,25 @@ def run_source(db, fetcher, source, max_pages=0):
             dbmod.backfill_venue_url(db, destination_id, event.get("url", ""))
             if dbmod.upsert_event(db, source.name, event, destination_id):
                 linked += 1
+                venues.add(destination_id)
 
         # Only a complete crawl knows what no longer exists. A bounded run
         # (--max-pages, used for verification) has not looked at the rest of
         # the source, so purging would delete rows that are still fine.
+        # A feed source catalogues no places — its venues come from the
+        # events — so leading with "0 places" reported a success as though
+        # it were a failure. Say what it actually did instead.
+        if places:
+            counts = f"{places} places, {linked}/{events} events linked"
+        else:
+            venue_word = "venue" if len(venues) == 1 else "venues"
+            counts = f"{linked}/{events} events linked at {len(venues)} {venue_word}"
+
         if max_pages:
-            message = f"{places} places, {linked}/{events} events linked (partial run, nothing purged)"
+            message = f"{counts} (partial run, nothing purged)"
         else:
             dbmod.purge_stale(db, source.name, run_start)
-            message = f"{places} places, {linked}/{events} events linked"
+            message = counts
         db.commit()
         log.info("%s: %s", source.name, message)
         for description in unplaced[:10]:

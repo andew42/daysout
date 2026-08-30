@@ -221,3 +221,29 @@ class TestExistingVenueGainsALink(unittest.TestCase):
             self.db, None,
             FakeSource([self.event("https://www.stonor.com/whats-on/other/")]))
         self.assertEqual(self.venue_url(), "https://stonor.example/official")
+
+
+class TestRunMessage(unittest.TestCase):
+    """What the Sources page shows for a source that publishes only events.
+
+    "0 places, 5/5 events linked" reads as a failure — it led off with a
+    zero for something this kind of source never has.
+    """
+
+    def setUp(self):
+        self.db = open_db()
+
+    def test_a_feed_source_reports_its_venues_not_zero_places(self):
+        ok, message = pipeline.run_source(self.db, None, FakeSource([
+            ("event", {
+                "source_id": f"e{n}",
+                "title": f"Event {n}",
+                "start_date": "2026-09-05",
+                "end_date": "2026-09-05",
+                "url": "https://www.stonor.com/whats-on/tour/",
+                "location_name": "Stonor Park",
+                "location_postcode": "M2 5PD",
+            }) for n in range(5)]))
+        self.assertTrue(ok)
+        self.assertEqual(message, "5/5 events linked at 1 venue")
+        self.assertNotIn("0 places", message)
