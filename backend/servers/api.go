@@ -226,3 +226,30 @@ func SourcesHandler(s *store.Store) http.HandlerFunc {
 		}
 	}
 }
+
+// SourceContributionHandler GET /api/sources/contribution?name=…
+//
+// What one source has actually put in the database — the list behind the
+// events/places pill on the Sources page. A count tells you a source is
+// working; only the rows tell you whether what it produced is any good.
+func SourceContributionHandler(s *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		name := r.URL.Query().Get("name")
+		if name == "" {
+			writeError(w, http.StatusBadRequest, "name is required")
+			return
+		}
+		contribution, err := s.Contribution(name)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, contribution)
+	}
+}

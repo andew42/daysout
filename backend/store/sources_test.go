@@ -389,3 +389,71 @@ func TestRemovingASourceKeepsAVenueAnotherSourceIsUsing(t *testing.T) {
 		t.Error("another source's event was destroyed by removing this one")
 	}
 }
+
+func TestContributionListsWhatASourceProduced(t *testing.T) {
+
+	s := newTestStore(t)
+	if _, err := s.AddSource("https://example.org/events", "music", "", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	seedRun(t, s, "example-events", true, "1 places, 3/3 events linked", 3)
+
+	contribution, err := s.Contribution("example-events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contribution.EventsTotal != 3 || contribution.DestinationsTotal != 1 {
+		t.Fatalf("totals = %d events, %d places; want 3 and 1",
+			contribution.EventsTotal, contribution.DestinationsTotal)
+	}
+	if len(contribution.Events) != 3 {
+		t.Fatalf("got %d event rows", len(contribution.Events))
+	}
+	// A count says a source is working; only the rows say whether what it
+	// produced is any good, so each needs its venue and date.
+	first := contribution.Events[0]
+	if first.Where != "example-events venue" || first.When != "2026-09-05" {
+		t.Errorf("event row = %+v, want its venue and date", first)
+	}
+	if contribution.Destinations[0].Postcode == "" &&
+		contribution.Destinations[0].Title == "" {
+		t.Error("place rows should carry a name")
+	}
+}
+
+func TestContributionOfASourceWithNothingIsEmptyNotNull(t *testing.T) {
+
+	// The browser renders these directly; a null would be a crash rather
+	// than an empty list.
+	s := newTestStore(t)
+	contribution, err := s.Contribution("never-heard-of-it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contribution.Events == nil || contribution.Destinations == nil {
+		t.Fatal("empty lists must be empty, not null")
+	}
+	if contribution.EventsTotal != 0 {
+		t.Errorf("eventsTotal = %d, want 0", contribution.EventsTotal)
+	}
+}
+
+func TestContributionShowsADateRangeWhenThereIsOne(t *testing.T) {
+
+	s := newTestStore(t)
+	addDestination(t, s, "A venue", 51, -2)
+	if _, err := s.DB.Exec(
+		`INSERT INTO events (destination_id, title, start_date, end_date,
+		     source, source_id, last_seen)
+		 VALUES ((SELECT id FROM destinations LIMIT 1), 'A festival',
+		         '2026-09-05', '2026-09-07', 'feed', 'f', '2026-01-01')`); err != nil {
+		t.Fatal(err)
+	}
+	contribution, err := s.Contribution("feed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contribution.Events[0].When != "2026-09-05 – 2026-09-07" {
+		t.Errorf("when = %q, want the range", contribution.Events[0].When)
+	}
+}

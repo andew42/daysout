@@ -113,7 +113,11 @@ daysout/
   `/api/sources`, `backend/store/sources.go`) add one from the browser.
   The listing shows **what each source is contributing** — events and
   places, ordered by events, so what works is at the top — plus the
-  scraper's own message from its last run. A verdict like "publishes:
+  scraper's own message from its last run. The pill is a button: it opens
+  the rows themselves (`GET /api/sources/contribution`), because a count
+  says a source is working and only the rows say whether what it produced
+  is any good — a source can report five events and have read five
+  meaningless ones. Capped at 200 rows a side, with the true totals shown. A verdict like "publishes:
   sitemap" and a count of zero mean the same thing in the end, and only
   one of them says so. It also lists the sources written in code
   (`builtIn`), found by taking the union of the table with whatever has

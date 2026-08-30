@@ -50,7 +50,8 @@ a row, not a code change — add one from the **Sources** tab in the web UI
 (or by hand, plus `python3 -m daysout_scraper.discover`). Adding a site
 only records it. Each source shows how many events and places it is
 actually contributing, so a site that publishes a sitemap and yields
-nothing is visibly different from one that works; **Update** runs a full
+nothing is visibly different from one that works — click the count to see
+the events themselves; **Update** runs a full
 crawl of that one site and shows what came back — the events it read, or the reason there were
 none. A test samples the site rather than crawling it, so it can add
 events but never remove any. Sites not tested by hand are picked up by

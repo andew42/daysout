@@ -343,3 +343,97 @@ func (s *Store) LatestRun(name string) (bool, string) {
 	}
 	return ok.Valid && ok.Bool, message
 }
+
+// SourceRow is one event or place a source has contributed, for the list
+// behind the contribution pill.
+//
+// Deliberately not the Destination and Event types the map and events views
+// use: those carry drive times from a postcode, which is a question about
+// where you live and has nothing to do with what a source produced.
+type SourceRow struct {
+	Title    string `json:"title"`
+	When     string `json:"when"`
+	Where    string `json:"where"`
+	Postcode string `json:"postcode"`
+	Category string `json:"category"`
+	URL      string `json:"url"`
+}
+
+// SourceContribution is everything a source has put in the database.
+type SourceContribution struct {
+	Name              string      `json:"name"`
+	Events            []SourceRow `json:"events"`
+	Destinations      []SourceRow `json:"destinations"`
+	EventsTotal       int         `json:"eventsTotal"`
+	DestinationsTotal int         `json:"destinationsTotal"`
+}
+
+// sourceRowLimit keeps one badly-behaved source from sending thousands of
+// rows to a browser; the totals still report the true size.
+const sourceRowLimit = 200
+
+// Contribution lists what one source has actually contributed.
+//
+// Events first and soonest first: the question behind the pill is "what
+// did this give me?", and a list starting with things long past answers a
+// different one.
+func (s *Store) Contribution(name string) (SourceContribution, error) {
+
+	result := SourceContribution{
+		Name: name, Events: []SourceRow{}, Destinations: []SourceRow{},
+	}
+
+	events, err := s.DB.Query(
+		`SELECT e.title, e.start_date, e.end_date, e.category, e.url,
+		        d.name, d.postcode
+		 FROM events e JOIN destinations d ON d.id = e.destination_id
+		 WHERE e.source = ?
+		 ORDER BY e.start_date DESC LIMIT ?`, name, sourceRowLimit)
+	if err != nil {
+		return result, err
+	}
+	defer events.Close()
+	for events.Next() {
+		var row SourceRow
+		var start, end string
+		if err := events.Scan(&row.Title, &start, &end, &row.Category,
+			&row.URL, &row.Where, &row.Postcode); err != nil {
+			return result, err
+		}
+		row.When = start
+		if end != start {
+			row.When = start + " – " + end
+		}
+		result.Events = append(result.Events, row)
+	}
+	if err := events.Err(); err != nil {
+		return result, err
+	}
+
+	places, err := s.DB.Query(
+		`SELECT name, category, postcode, url FROM destinations
+		 WHERE source = ? ORDER BY name LIMIT ?`, name, sourceRowLimit)
+	if err != nil {
+		return result, err
+	}
+	defer places.Close()
+	for places.Next() {
+		var row SourceRow
+		if err := places.Scan(&row.Title, &row.Category, &row.Postcode,
+			&row.URL); err != nil {
+			return result, err
+		}
+		result.Destinations = append(result.Destinations, row)
+	}
+	if err := places.Err(); err != nil {
+		return result, err
+	}
+
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM events WHERE source = ?`,
+		name).Scan(&result.EventsTotal); err != nil {
+		return result, err
+	}
+	err = s.DB.QueryRow(`SELECT COUNT(*) FROM destinations WHERE source = ?`,
+		name).Scan(&result.DestinationsTotal)
+	return result, err
+}

@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { addSource, deleteSource, fetchSources, updateSource } from './api.jsx'
+import {
+  addSource, deleteSource, fetchContribution, fetchSources, updateSource,
+} from './api.jsx'
 import { ALL_CATEGORIES } from './settings.jsx'
 
 // What each extractor does, in the terms someone adding a site can judge.
@@ -23,11 +25,16 @@ function verdict(source) {
   return `publishes: ${source.lastStatus}`
 }
 
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
+
 // What a source is actually contributing — the only number that answers
 // "is this site worth keeping?". A verdict of "sitemap" and a count of
 // zero mean the same thing in the end, and only one of them says so.
-function Contribution({ source }) {
-  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
+//
+// Clickable when there is something to show: the count says a source is
+// working, and the rows say whether what it produced is any good, which
+// is the next thing you want to know every time.
+function Contribution({ source, expanded, onToggle }) {
   if (!source.events && !source.destinations) {
     return (
       <span className="contribution none">
@@ -36,10 +43,72 @@ function Contribution({ source }) {
     )
   }
   return (
-    <span className="contribution">
+    <button
+      type="button"
+      className="contribution"
+      aria-expanded={expanded}
+      onClick={onToggle}
+      title="Show what this source produced"
+    >
       <strong>{plural(source.events, 'event')}</strong>
       {source.destinations > 0 && ` · ${plural(source.destinations, 'place')}`}
-    </span>
+      <span className="contribution-caret">{expanded ? '▾' : '▸'}</span>
+    </button>
+  )
+}
+
+// The rows themselves. Events soonest-last so the newest are at the top,
+// which is where a source's current output is.
+function ContributionList({ contribution }) {
+  if (!contribution) return <p className="notice">Loading…</p>
+  if (contribution.error) return <p className="notice error">{contribution.error}</p>
+
+  const { events, destinations, eventsTotal, destinationsTotal } = contribution
+  const more = (shown, total, word) =>
+    total > shown ? ` (showing ${shown} of ${total})` : ''
+
+  return (
+    <div className="contribution-list">
+      {events.length > 0 && (
+        <>
+          <h4>
+            {plural(eventsTotal, 'event')}
+            {more(events.length, eventsTotal)}
+          </h4>
+          <ul>
+            {events.map((event, i) => (
+              <li key={`e${i}`}>
+                <span className="when">{event.when}</span>
+                {event.url
+                  ? <a href={event.url} target="_blank" rel="noreferrer">{event.title}</a>
+                  : <span>{event.title}</span>}
+                <span className="where">
+                  {event.where}{event.postcode && ` · ${event.postcode}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {destinations.length > 0 && (
+        <>
+          <h4>
+            {plural(destinationsTotal, 'place')}
+            {more(destinations.length, destinationsTotal)}
+          </h4>
+          <ul>
+            {destinations.map((place, i) => (
+              <li key={`d${i}`}>
+                <span>{place.title}</span>
+                <span className="where">
+                  {place.category}{place.postcode && ` · ${place.postcode}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -115,6 +184,9 @@ export default function SourcesView() {
   const [updating, setUpdating] = useState('')
   // The source awaiting confirmation before removal, if any.
   const [confirming, setConfirming] = useState(null)
+  // Which source's rows are open, and what we have loaded for each.
+  const [openSource, setOpenSource] = useState('')
+  const [contributions, setContributions] = useState({})
   const [removing, setRemoving] = useState(false)
   const [results, setResults] = useState({})
 
@@ -146,6 +218,22 @@ export default function SourcesView() {
       setError(e.message)
     } finally {
       setBusy(false)
+    }
+  }
+
+  const toggleRows = async source => {
+    if (openSource === source.name) {
+      setOpenSource('')
+      return
+    }
+    setOpenSource(source.name)
+    // Always refetch: an Update may have changed what this source holds.
+    setContributions(c => ({ ...c, [source.name]: null }))
+    try {
+      const rows = await fetchContribution(source.name)
+      setContributions(c => ({ ...c, [source.name]: rows }))
+    } catch (e) {
+      setContributions(c => ({ ...c, [source.name]: { error: e.message } }))
     }
   }
 
@@ -272,7 +360,11 @@ export default function SourcesView() {
               <div className="source-main">
                 <strong>
                   {source.name}
-                  <Contribution source={source} />
+                  <Contribution
+                    source={source}
+                    expanded={openSource === source.name}
+                    onToggle={() => toggleRows(source)}
+                  />
                 </strong>
                 {source.url
                   ? <a href={source.url} target="_blank" rel="noreferrer">{source.url}</a>
@@ -311,6 +403,9 @@ export default function SourcesView() {
                   </button>
                 )}
               </div>
+              {openSource === source.name && (
+                <ContributionList contribution={contributions[source.name]} />
+              )}
               {results[source.name] && <TestResult result={results[source.name]} />}
             </li>
           ))}

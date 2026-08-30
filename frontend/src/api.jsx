@@ -71,3 +71,10 @@ export function deleteSource(name) {
 export function updateSource(name) {
   return sendJSON('/api/sources/update', 'POST', { name })
 }
+
+// What one source has actually put in the database — the list behind the
+// events/places pill. A count says a source is working; only the rows say
+// whether what it produced is any good.
+export function fetchContribution(name) {
+  return getJSON(`/api/sources/contribution?name=${encodeURIComponent(name)}`)
+}

@@ -318,3 +318,42 @@ body {
   cursor: pointer;
 }
 .modal-actions button.danger { color: #ffffff; background: #a03024; border-color: #a03024; }
+
+/* The pill is a button when there is something behind it. */
+button.contribution {
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+button.contribution:hover { filter: brightness(1.15); }
+.contribution-caret { font-size: 0.7rem; opacity: 0.8; }
+
+/* What a source produced, opened from its pill. */
+.contribution-list {
+  flex-basis: 100%;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--line);
+  font-size: 0.82rem;
+}
+.contribution-list h4 {
+  margin: 6px 0 4px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: lowercase;
+}
+.contribution-list ul { list-style: none; margin: 0; padding: 0; }
+.contribution-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--line);
+}
+.contribution-list li:last-child { border-bottom: none; }
+.contribution-list .when { min-width: 11em; color: var(--accent); font-variant-numeric: tabular-nums; }
+.contribution-list .where { color: var(--muted); }
+.contribution-list a { color: var(--ink); }
