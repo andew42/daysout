@@ -231,6 +231,19 @@ jobs:
               if 'visit' in line.lower() or line.lower().startswith(('user-agent', 'disallow')):
                   print('   ', line.strip())" || true
 
+      - name: Hunt for a sanctioned route into National Trust events
+        # The pages are closed to us and we do not work around that, so
+        # look for a route the site offers instead: a calendar feed, an
+        # RSS file, or a sitemap detailed enough to be useful on its own.
+        # A sitemap is published precisely so automated clients can
+        # discover what a site holds, so reading one circumvents nothing —
+        # the question is whether the URLs carry event dates.
+        continue-on-error: true
+        run: |
+          cd /opt/daysout/scraper
+          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -m daysout_scraper.feedhunt \
+            --url https://www.nationaltrust.org.uk/ || true
+
       - name: Diagnose a rendered listing page
         # What does a client-side listing actually contain once rendered?
         # Prints the un-rendered and rendered DOM side by side — dates,
