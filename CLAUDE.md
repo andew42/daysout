@@ -111,7 +111,17 @@ daysout/
   row into a runnable source, so adding a listing site is an INSERT — which
   is what lets the **Sources tab** (`frontend/src/SourcesView.jsx`,
   `/api/sources`, `backend/store/sources.go`) add one from the browser.
-  Adding a source only writes the row. **Test now**
+  The listing shows **what each source is contributing** — events and
+  places, ordered by events, so what works is at the top — plus the
+  scraper's own message from its last run. A verdict like "publishes:
+  sitemap" and a count of zero mean the same thing in the end, and only
+  one of them says so. It also lists the sources written in code
+  (`builtIn`), found by taking the union of the table with whatever has
+  run or produced rows: Wikidata and English Heritage are not in the table
+  and are the two that work, so a page listing only the table was a list
+  of failures. Built-in rows offer Test now and nothing else — there is no
+  row to enable, disable or delete.
+- Adding a source only writes the row. **Test now**
   (`POST /api/sources/test`, `backend/servers/scrapetest.go`) is the one
   place the server reaches the internet, and it does it the only way
   anything here does — by running `python3 -m daysout_scraper --sources

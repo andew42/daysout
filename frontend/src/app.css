@@ -247,3 +247,19 @@ body {
 }
 /* The row is a flex line; the result needs a line of its own under it. */
 .source { flex-wrap: wrap; }
+
+/* What a source is contributing, next to its name. */
+.contribution {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #ffffff;
+  background: var(--accent);
+  white-space: nowrap;
+}
+.contribution.none { color: var(--muted); background: var(--ground); border: 1px solid var(--line); }
+.contribution strong { font-weight: 700; }
+.source-run { font-size: 0.8rem; color: var(--accent); }
+.source-run.bad { color: #a03024; }

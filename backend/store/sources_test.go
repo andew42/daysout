@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -170,5 +171,111 @@ func TestSourcesListsWhatTheScraperRecorded(t *testing.T) {
 	}
 	if sources[0].Kind != "browser" {
 		t.Errorf("kind = %q, want the kind it was added with", sources[0].Kind)
+	}
+}
+
+// seedRun records a scrape run and some rows for a source, as the scraper
+// would, so the listing has something to count.
+func seedRun(t *testing.T, s *Store, name string, ok bool, message string,
+	events int) {
+
+	t.Helper()
+	if _, err := s.DB.Exec(
+		`INSERT INTO scrape_runs (source, started_at, finished_at, ok, message)
+		 VALUES (?, '2026-08-30T12:00:00Z', '2026-08-30T12:01:00Z', ?, ?)`,
+		name, ok, message); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB.Exec(
+		`INSERT INTO destinations (name, category, lat, lon, source, source_id,
+		     first_seen, last_seen)
+		 VALUES (?, 'garden', 51.0, -2.0, ?, ?, '2026-01-01', '2026-01-01')`,
+		name+" venue", name, name+"-venue"); err != nil {
+		t.Fatal(err)
+	}
+	var destinationID int
+	if err := s.DB.QueryRow(
+		`SELECT id FROM destinations WHERE source = ?`, name).Scan(&destinationID); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < events; i++ {
+		if _, err := s.DB.Exec(
+			`INSERT INTO events (destination_id, title, start_date, end_date,
+			     source, source_id, last_seen)
+			 VALUES (?, ?, '2026-09-05', '2026-09-05', ?, ?, '2026-01-01')`,
+			destinationID, fmt.Sprintf("Event %d", i), name,
+			fmt.Sprintf("%s-%d", name, i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestSourcesReportWhatEachIsContributing(t *testing.T) {
+
+	s := newTestStore(t)
+	if _, err := s.AddSource("https://quiet.example.org/", "craft", ""); err != nil {
+		t.Fatal(err)
+	}
+	seedRun(t, s, "quiet-example", false, "no places found", 0)
+
+	// A source written in code: not a row in the table, and the one doing
+	// the work. Leaving it off the page made it a list of failures.
+	seedRun(t, s, "english_heritage", true, "392 places, 116/116 events linked", 3)
+
+	sources, err := s.Sources()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sources) != 2 {
+		t.Fatalf("got %d sources, want the table row and the built-in one", len(sources))
+	}
+
+	// Most events first: what is working belongs at the top.
+	if sources[0].Name != "english_heritage" {
+		t.Errorf("first source = %q, want the one contributing events", sources[0].Name)
+	}
+	if sources[0].Events != 3 || sources[0].Destinations != 1 {
+		t.Errorf("counts = %d events, %d places; want 3 and 1",
+			sources[0].Events, sources[0].Destinations)
+	}
+	if !sources[0].BuiltIn {
+		t.Error("a source with no row in the table is built in")
+	}
+	if !sources[0].LastRunOK || sources[0].LastMessage != "392 places, 116/116 events linked" {
+		t.Errorf("last run = %v %q, want the scraper's own message",
+			sources[0].LastRunOK, sources[0].LastMessage)
+	}
+
+	if sources[1].Name != "quiet-example" {
+		t.Fatalf("second source = %q", sources[1].Name)
+	}
+	if sources[1].Events != 0 {
+		t.Errorf("a source that found nothing should report 0 events, got %d",
+			sources[1].Events)
+	}
+	if sources[1].BuiltIn {
+		t.Error("a row added through the UI is not built in")
+	}
+	if sources[1].LastRunOK {
+		t.Error("last run failed, so lastRunOK should be false")
+	}
+}
+
+func TestASourceThatHasNeverRunReportsNoOutcome(t *testing.T) {
+
+	s := newTestStore(t)
+	if _, err := s.AddSource("https://new.example.org/", "craft", ""); err != nil {
+		t.Fatal(err)
+	}
+	sources, err := s.Sources()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sources) != 1 {
+		t.Fatalf("got %d sources, want 1", len(sources))
+	}
+	// Null columns must not become a confident-looking "failed".
+	if sources[0].LastRun != "" || sources[0].LastMessage != "" || sources[0].LastRunOK {
+		t.Errorf("a source never run should report no outcome, got %+v", sources[0])
 	}
 }

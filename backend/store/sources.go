@@ -27,6 +27,22 @@ type Source struct {
 	// UserAdded rows may be deleted; seeded ones may only be disabled,
 	// because the scraper re-inserts any candidate missing from the table.
 	UserAdded bool `json:"userAdded"`
+
+	// What this source is actually contributing. A verdict like "sitemap"
+	// says what a site publishes; these say whether any of it reached the
+	// map, which is the only question that matters.
+	Events       int `json:"events"`
+	Destinations int `json:"destinations"`
+
+	// The scraper's own account of the last time it ran this source.
+	LastRun     string `json:"lastRun"`
+	LastRunOK   bool   `json:"lastRunOK"`
+	LastMessage string `json:"lastMessage"`
+
+	// BuiltIn sources live in the scraper's code rather than this table —
+	// Wikidata and English Heritage, which between them supply nearly
+	// everything. Leaving them off the page made it a list of failures.
+	BuiltIn bool `json:"builtIn"`
 }
 
 // UIAddedNote marks rows added through the web UI. The scraper seeds its
@@ -63,12 +79,41 @@ func sourceTimestamp() string {
 	return time.Now().UTC().Format("2006-01-02T15:04:05.000000Z")
 }
 
-// Sources returns every row, newest first, for the UI list.
+// sourcesQuery lists every source the scraper has, with what each one is
+// contributing.
+//
+// The name set is the union of the sources table and whatever has actually
+// run or produced rows, because the sources written in code — Wikidata and
+// English Heritage — are not in the table and are the two that work. A
+// page listing only the table was a list of things that had failed.
+//
+// Ordered by events contributed, so what is working is at the top.
+const sourcesQuery = `
+WITH names AS (
+    SELECT name AS name FROM sources
+    UNION SELECT source FROM scrape_runs WHERE source != 'seed'
+    UNION SELECT source FROM events WHERE source != 'seed'
+)
+SELECT n.name,
+       COALESCE(s.url, ''), COALESCE(s.kind, ''), COALESCE(s.category, ''),
+       COALESCE(s.enabled, 1), COALESCE(s.notes, ''), COALESCE(s.added, ''),
+       COALESCE(s.last_status, ''),
+       s.name IS NULL AS built_in,
+       (SELECT COUNT(*) FROM events e WHERE e.source = n.name),
+       (SELECT COUNT(*) FROM destinations d WHERE d.source = n.name),
+       (SELECT r.started_at FROM scrape_runs r
+          WHERE r.source = n.name ORDER BY r.id DESC LIMIT 1),
+       (SELECT r.ok FROM scrape_runs r
+          WHERE r.source = n.name ORDER BY r.id DESC LIMIT 1),
+       (SELECT r.message FROM scrape_runs r
+          WHERE r.source = n.name ORDER BY r.id DESC LIMIT 1)
+FROM names n LEFT JOIN sources s ON s.name = n.name
+ORDER BY 10 DESC, 11 DESC, n.name`
+
+// Sources returns every source with what it is contributing, for the UI.
 func (s *Store) Sources() ([]Source, error) {
 
-	rows, err := s.DB.Query(
-		`SELECT name, url, kind, category, enabled, notes, added, last_status
-		 FROM sources ORDER BY added DESC, name`)
+	rows, err := s.DB.Query(sourcesQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -77,13 +122,23 @@ func (s *Store) Sources() ([]Source, error) {
 	result := []Source{}
 	for rows.Next() {
 		var src Source
-		var enabled int
+		var enabled, builtIn int
+		// A source that has never finished a run has no outcome to report.
+		var lastRun, lastMessage sql.NullString
+		var lastOK sql.NullBool
+
 		if err := rows.Scan(&src.Name, &src.URL, &src.Kind, &src.Category,
-			&enabled, &src.Notes, &src.Added, &src.LastStatus); err != nil {
+			&enabled, &src.Notes, &src.Added, &src.LastStatus, &builtIn,
+			&src.Events, &src.Destinations,
+			&lastRun, &lastOK, &lastMessage); err != nil {
 			return nil, err
 		}
 		src.Enabled = enabled != 0
+		src.BuiltIn = builtIn != 0
 		src.UserAdded = strings.HasPrefix(src.Notes, UIAddedNote)
+		src.LastRun = lastRun.String
+		src.LastRunOK = lastOK.Valid && lastOK.Bool
+		src.LastMessage = lastMessage.String
 		result = append(result, src)
 	}
 	return result, rows.Err()

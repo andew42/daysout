@@ -23,6 +23,26 @@ function verdict(source) {
   return `publishes: ${source.lastStatus}`
 }
 
+// What a source is actually contributing — the only number that answers
+// "is this site worth keeping?". A verdict of "sitemap" and a count of
+// zero mean the same thing in the end, and only one of them says so.
+function Contribution({ source }) {
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
+  if (!source.events && !source.destinations) {
+    return (
+      <span className="contribution none">
+        {source.lastRun ? 'no events' : 'not run yet'}
+      </span>
+    )
+  }
+  return (
+    <span className="contribution">
+      <strong>{plural(source.events, 'event')}</strong>
+      {source.destinations > 0 && ` · ${plural(source.destinations, 'place')}`}
+    </span>
+  )
+}
+
 // What the scraper did, in its own words. The log matters more than the
 // verdict: it names the pages it looked at, how many events it read, and
 // the venue of any event it could not place.
@@ -179,13 +199,30 @@ export default function SourcesView() {
           {sources.map(source => (
             <li key={source.name} className={source.enabled ? 'source' : 'source disabled'}>
               <div className="source-main">
-                <strong>{source.name}</strong>
-                <a href={source.url} target="_blank" rel="noreferrer">{source.url}</a>
-                <span className="source-meta">
-                  {source.category || 'uncategorised'} · {KIND_LABELS[source.kind] || source.kind}
-                  {' · '}{verdict(source)}
-                </span>
-                {source.notes && <span className="source-notes">{source.notes}</span>}
+                <strong>
+                  {source.name}
+                  <Contribution source={source} />
+                </strong>
+                {source.url
+                  ? <a href={source.url} target="_blank" rel="noreferrer">{source.url}</a>
+                  : <span className="source-meta">built into the scraper</span>}
+                {!source.builtIn && (
+                  <span className="source-meta">
+                    {source.category || 'uncategorised'} ·{' '}
+                    {KIND_LABELS[source.kind] || source.kind} · {verdict(source)}
+                  </span>
+                )}
+                {/* The scraper's own words about its last run say more than
+                    any count: how many events it read, and how many of those
+                    it could place. */}
+                {source.lastMessage && (
+                  <span className={source.lastRunOK ? 'source-run' : 'source-run bad'}>
+                    last run: {source.lastMessage}
+                  </span>
+                )}
+                {source.notes && !source.builtIn && (
+                  <span className="source-notes">{source.notes}</span>
+                )}
               </div>
               <div className="source-actions">
                 <button
@@ -195,9 +232,11 @@ export default function SourcesView() {
                 >
                   {testing === source.name ? 'Testing…' : 'Test now'}
                 </button>
-                <button type="button" onClick={() => toggle(source)}>
-                  {source.enabled ? 'Disable' : 'Enable'}
-                </button>
+                {!source.builtIn && (
+                  <button type="button" onClick={() => toggle(source)}>
+                    {source.enabled ? 'Disable' : 'Enable'}
+                  </button>
+                )}
                 {/* Built-in candidates are re-added by the scraper if
                     deleted, so only sites added here offer Remove. */}
                 {source.userAdded && (
