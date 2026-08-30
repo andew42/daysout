@@ -32,6 +32,17 @@ purpose, and is not something this scraper does. If the site ever serves
 those pages, the source starts working with no further changes; National
 Trust properties reach the map from Wikidata in the meantime.
 
+A hunt for a route they do sanction (`python3 -m daysout_scraper.feedhunt
+--url <site>`, 30 Aug 2026) came back empty: robots.txt declares no
+sitemap of its own, none of nine conventional feed paths holds a calendar
+or RSS file (`/events.ics` serves an ordinary HTML page; the rest answer
+with the same challenge), and — the route with the best odds — the
+sitemap's event URLs carry **no dates at all**, so a URL list alone gives
+titles with nothing to put them on a calendar with. English Heritage's
+slugs do carry dates, which is why it was worth checking. Getting NT
+events therefore needs either a feed from them or a page fetched by a
+person in their own browser.
+
 ### Which event sources actually work
 
 Event sources live in the `sources` table, so trying a new listing site is
@@ -48,7 +59,7 @@ result is worth knowing before adding more:
 | Source | Result |
 |--------|--------|
 | English Heritage | **Works** — 392 properties, ~119 events, Event JSON-LD per page |
-| National Trust | robots.txt permits `/visit/**`, but the site answers with a 118 KB bot-protection challenge (measured 30 Aug 2026) — the source probes once and stops |
+| National Trust | robots.txt permits `/visit/**`; the site answers with a 118 KB bot-protection challenge. No feed, and no dates in its URLs — see below |
 | RHS | **Works** — five flower shows; they publish a postcode with no venue name, so the venue is created from it |
 | NGS (open gardens, garden finder) | Sitemap only. Rendering the "open this week" page doubles it (110k → 240k bytes) but it is a hub: no dates, just a link per region |
 | Historic Houses, Invitation to View | Sitemap only — WebPage/Article JSON-LD, no events |

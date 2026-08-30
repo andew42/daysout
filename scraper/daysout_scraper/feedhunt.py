@@ -45,9 +45,12 @@ CONVENTIONAL_FEEDS = (
 FEED_URL_RE = re.compile(r"\.(ics|rss|atom)$|/(feed|rss|atom)/?$", re.IGNORECASE)
 
 # Tighter than the crawler's hint pattern, which deliberately includes
-# section fronts like /visit because they are worth *fetching*. Here we are
-# counting individual events, so require a slug below the events segment.
-EVENT_PATH_RE = re.compile(r"/(events?|whats-on|what-s-on)/[^/]+", re.IGNORECASE)
+# section fronts like /visit because they are worth *fetching*. Here we
+# count pages that are about events: an individual event, or a venue's
+# own events listing. The first cut required a slug *below* the events
+# segment, which quietly excluded every "<property>/events" page and left
+# the report counting national campaign pages only.
+EVENT_PATH_RE = re.compile(r"/(events?|whats-on|what-s-on)(/|$)", re.IGNORECASE)
 
 # Longest first: "oct" would otherwise match inside "october" and the
 # word boundary that follows would then fail.
@@ -147,10 +150,16 @@ def probe_conventional_feeds(fetcher, base):
             print(f"    {url}\n        bot-protection challenge ({len(body)} bytes)")
             continue
         head = body.lstrip()[:200].replace("\n", " ")
-        kind = ("iCal" if head.startswith("BEGIN:VCALENDAR") else
-                "XML/RSS" if head.startswith("<?xml") or "<rss" in head[:100].lower() else
-                "HTML or other")
-        print(f"    {url}\n        FOUND: {kind}, {len(body)} bytes — {head[:100]}")
+        if head.startswith("BEGIN:VCALENDAR"):
+            print(f"    {url}\n        FOUND: iCal, {len(body)} bytes")
+        elif head.startswith("<?xml") or "<rss" in head[:100].lower():
+            print(f"    {url}\n        FOUND: XML/RSS, {len(body)} bytes — {head[:100]}")
+        else:
+            # Served, but HTML. A site that has no feed at this path
+            # usually answers with its ordinary 404 page, and calling that
+            # a find would send someone off after nothing.
+            print(f"    {url}\n        not a feed: HTML, {len(body)} bytes "
+                  f"(probably an error page) — {head[:80]}")
 
 
 def main():

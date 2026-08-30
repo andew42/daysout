@@ -23,6 +23,8 @@ SITEMAP = """<?xml version="1.0" encoding="UTF-8"?>
        <lastmod>2026-08-28</lastmod></url>
   <url><loc>https://example.org/visit/wiltshire/stourhead/events/undated-open-day</loc>
        <lastmod>2026-08-20</lastmod></url>
+  <url><loc>https://example.org/visit/wiltshire/stourhead/events</loc>
+       <lastmod>2026-08-29</lastmod></url>
   <url><loc>https://example.org/events.ics</loc></url>
 </urlset>"""
 
@@ -84,12 +86,13 @@ class TestSitemapReport(unittest.TestCase):
 
     def test_counts_what_a_url_list_would_give_us(self):
         output = self.report()
-        self.assertIn("5 URL(s)", output)
-        self.assertIn("event-shaped URLs: 3", output)
+        self.assertIn("6 URL(s)", output)
+        # Three individual events plus the property's own events listing.
+        self.assertIn("event-shaped URLs: 4", output)
         # Two of the three carry their dates; the third does not.
         self.assertIn("carry a date in the slug: 2", output)
-        # The property page and the .ics file are not individual events.
-        self.assertNotIn("event-shaped URLs: 5", output)
+        # The property page itself is not about events.
+        self.assertNotIn("event-shaped URLs: 6", output)
 
     def test_feed_shaped_urls_are_surfaced(self):
         self.assertIn("https://example.org/events.ics", self.report())
@@ -106,6 +109,16 @@ class TestRobotsReport(unittest.TestCase):
 
 
 class TestFeedProbes(unittest.TestCase):
+
+    def test_an_html_page_is_not_reported_as_a_feed(self):
+        # A site with no feed at that path serves its 404 page. Calling
+        # that a find sends someone off after nothing.
+        fetcher = FakeFetcher({"https://example.org/events.ics":
+                               "<!doctype html><html><body>Not found</body></html>"})
+        output = capture(feedhunt.probe_conventional_feeds, fetcher,
+                         "https://example.org/")
+        self.assertNotIn("FOUND", output)
+        self.assertIn("not a feed: HTML", output)
 
     def test_a_real_calendar_is_reported_as_found(self):
         ical = "BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR"
