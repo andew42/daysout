@@ -36,9 +36,11 @@ main() {
     echo "Downloading ${TARBALL_URL} ..."
     curl -fsSL --retry 4 --retry-delay 2 -o "${WORK}/daysout.tar.gz" "${TARBALL_URL}"
 
+    # python3-pip isn't needed by the scraper itself, but without it the
+    # optional browser scanner can't be installed later.
     echo "Installing scraper dependencies (python3 requests + beautifulsoup4)..."
     if command -v apt-get >/dev/null; then
-        apt-get install -y -qq python3 python3-requests python3-bs4
+        apt-get install -y -qq python3 python3-pip python3-requests python3-bs4
     else
         echo "apt-get not found — install python3, requests and beautifulsoup4 yourself" >&2
     fi

@@ -63,29 +63,39 @@ jobs:
         run: sudo /opt/daysout/setup/get-tiles.sh --data-dir /var/lib/daysout
 
       - name: Ensure browser automation is available
-        # Sources of kind 'browser' render pages before reading them. Without
-        # Playwright they are skipped with a warning rather than failing, so
-        # this step is allowed to fail on a machine where it can't install.
+        # The container was built with apt packages only, so pip may not be
+        # there at all — the first attempt at this step exited instantly
+        # because `pip3` did not exist, and continue-on-error hid it. Print
+        # what happens at each stage so a failure says why.
         continue-on-error: true
         run: |
-          if python3 -c "import playwright" 2>/dev/null; then
-            echo "playwright already installed"
-          else
+          set -x
+          if ! python3 -c "import playwright" 2>/dev/null; then
+            command -v pip3 >/dev/null || sudo apt-get install -y -qq python3-pip
             sudo pip3 install --break-system-packages playwright \
               || sudo pip3 install playwright
           fi
-          # Reuse a Chromium that's already here if there is one; only
+          python3 -c "import playwright; print('playwright import OK')"
+
+          # Reuse a Chromium already on the machine if there is one; only
           # download Playwright's (~150 MB) when there isn't.
           if sudo python3 -c "
           import sys; sys.path.insert(0, '/opt/daysout/scraper')
           from daysout_scraper import browser
           found = browser.find_chromium()
-          print('using existing Chromium:', found or '(none found)')
+          print('existing Chromium:', found or '(none)')
           sys.exit(0 if found else 1)"; then
             echo "no browser download needed"
           else
             sudo python3 -m playwright install --with-deps chromium
           fi
+
+          # State the outcome plainly: browser sources are skipped without it.
+          sudo python3 -c "
+          import sys; sys.path.insert(0, '/opt/daysout/scraper')
+          from daysout_scraper import browser
+          print('browser scanning available:', browser.available(),
+                '| chromium:', browser.find_chromium() or '(playwright default)')"
 
       - name: Scrape
         # A full crawl by default: only a complete run gathers every

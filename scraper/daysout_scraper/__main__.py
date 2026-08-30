@@ -63,26 +63,37 @@ def main():
 
     # Rendering costs a browser launch, so start one only if a source in
     # this run actually asks for it, and share it across them all.
-    needs_browser = any(getattr(s, "kind", "") == "browser" for s in selected)
+    browser_sources = [s for s in selected if getattr(s, "kind", "") == "browser"]
     any_ok = False
 
-    def run_all():
+    def run_all(sources_to_run):
         ok_any = False
-        for source in selected:
+        for source in sources_to_run:
             ok, _ = run_source(db, fetcher, source, max_pages=args.max_pages)
             ok_any = ok_any or ok
         return ok_any
 
-    if needs_browser and browser.available():
-        with browser.Renderer(USER_AGENT) as renderer:
-            fetcher.renderer = renderer
-            any_ok = run_all()
+    if browser_sources and browser.available():
+        try:
+            with browser.Renderer(USER_AGENT) as renderer:
+                fetcher.renderer = renderer
+                any_ok = run_all(selected)
+        except browser.BrowserUnavailable as e:
+            # No usable browser: run everything else rather than losing the
+            # whole scrape to an optional feature.
+            log.warning("skipping %d browser source(s): %s",
+                        len(browser_sources), e)
+            any_ok = run_all([s for s in selected if s not in browser_sources])
+    elif browser_sources:
+        # Skip them outright rather than letting each one record a failed
+        # run saying the same thing.
+        log.warning(
+            "skipping %d browser source(s): playwright is not installed "
+            "(pip install playwright && python3 -m playwright install chromium)",
+            len(browser_sources))
+        any_ok = run_all([s for s in selected if s not in browser_sources])
     else:
-        if needs_browser:
-            log.warning("browser sources will be skipped: playwright is not "
-                        "installed (pip install playwright && playwright "
-                        "install chromium)")
-        any_ok = run_all()
+        any_ok = run_all(selected)
 
     if any_ok and not args.keep_seed:
         dbmod.purge_seed(db)
