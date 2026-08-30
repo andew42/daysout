@@ -130,15 +130,16 @@ daysout/
   An attraction's own website rarely repeats its address on every event
   page, so without it those events have nowhere to go and are dropped —
   which is most of what a single-venue site publishes.
-- **`slugdate.py` reads dates out of a URL** — "evening-airshow-15-september-2026"
-  — for pages that publish no structured data at all. The sitemap crawl
-  falls back to it when a page has no Event JSON-LD, taking the title from
-  the page's `<h1>`. A slug with no year is dated by the next occurrence,
-  with 45 days of slack backwards so an event three weeks past is not
-  pushed a year out. `_detect` also recognises when the source URL *is* a
-  sitemap: someone pasting ".../sitemap.xml" means "crawl this", and
-  probing it as a web page found nothing, which read as the site
-  publishing nothing at all.
+- **`slugdate.py` reads dates out of a URL** — "evening-airshow-15-september-2026".
+  It was written for Shuttleworth and does **not** apply there: measured
+  30 Aug 2026, that sitemap holds 374 URLs and **none** carries a date, so
+  the assumption behind it was simply wrong. It still covers the English
+  Heritage shape. Before writing another parser for a site, run
+  `feedhunt --url <site> --scan-newest`, which reports the URL shapes and
+  then what the newest event page actually contains — `_detect` recognising a
+  sitemap URL is the part of that work that did help: someone pasting
+  ".../sitemap.xml" means "crawl this", and probing it as a web page found
+  nothing, which read as the site publishing nothing at all.
 - Adding a source only writes the row. **Update**
   (`POST /api/sources/update`, `backend/servers/sourceupdate.go`) is the
   one place the server reaches the internet, and it does it the only way

@@ -262,36 +262,16 @@ jobs:
             --url https://ngs.org.uk/gardens-open-this-week-midlands/ \
             --browser --deep --fresh || true
 
-      - name: Check a sitemap of dated event pages
-        # Shuttleworth was added as a source and produced nothing: the URL
-        # given is the sitemap itself, and its event pages carry the date
-        # in the address rather than in structured data. This says what
-        # that sitemap actually holds — the sandbox cannot reach the site,
-        # so the parser was written to the described shape and this is
-        # what confirms or corrects it.
+      - name: What Shuttleworth's event pages actually carry
+        # The first attempt at this assumed the dates were in the URLs and
+        # was simply wrong: 374 URLs, none of them dated. So ask the site
+        # what its event pages hold instead of guessing again — the URL
+        # shapes, and then inside the newest event-shaped page.
         continue-on-error: true
         run: |
           cd /opt/daysout/scraper
-          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -c "
-          import sys
-          sys.path.insert(0, '/opt/daysout/scraper')
-          from daysout_scraper import slugdate
-          from daysout_scraper.fetch import Fetcher
-          from daysout_scraper.sitemap_source import sitemap_urls
-
-          fetcher = Fetcher('/var/lib/daysout/scrape-cache')
-          urls = [u for u, _ in sitemap_urls(
-              fetcher, 'https://www.shuttleworth.org/sitemap.xml', with_lastmod=True)]
-          print('URLs in the sitemap:', len(urls))
-          dated = [(u, slugdate.parse(u)) for u in urls]
-          hits = [(u, d) for u, d in dated if d]
-          print('URLs whose slug carries a date:', len(hits))
-          for url, dates in hits[:12]:
-              print('   ', dates[0], '..', dates[1], ' ', url)
-          print()
-          print('a sample of the rest, to see what shape they are:')
-          for url in [u for u, d in dated if not d][:12]:
-              print('   ', url)" || true
+          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -m daysout_scraper.feedhunt \
+            --url https://www.shuttleworth.org/ --scan-newest --skip-probes || true
 
       - name: Hunt for a sanctioned route into National Trust events
         # The pages are closed to us and we do not work around that, so

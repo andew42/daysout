@@ -105,8 +105,14 @@ def robots_report(fetcher, base):
     return sitemaps
 
 
-def sitemap_report(fetcher, sitemaps):
-    """What the sitemap holds, and whether a URL list alone would do."""
+def sitemap_report(fetcher, sitemaps, scan_newest=False):
+    """What the sitemap holds, and whether a URL list alone would do.
+
+    With scan_newest, also look inside the most recently changed
+    event-shaped page. Knowing a site has 374 URLs and no dates in any of
+    them says the URL list is useless; it does not say what the pages
+    themselves carry, and that is the next question every time.
+    """
 
     pairs = []
     for sitemap in sitemaps:
@@ -145,7 +151,40 @@ def sitemap_report(fetcher, sitemaps):
     print("    most common URL shapes:")
     for shape, count in shapes.most_common(8):
         print(f"      {count:7d}  /{shape}")
+
+    if scan_newest and events:
+        newest = sorted(events, key=lambda p: p[1], reverse=True)[0][0]
+        scan_page(fetcher, newest)
     return [url for url, _ in pairs]
+
+
+def scan_page(fetcher, url):
+    """What one event page actually carries — the question after the URLs."""
+
+    from . import domscan, jsonld
+
+    print(f"\n=== inside the newest event page\n    {url}")
+    try:
+        body = fetcher.get(url)
+    except Exception as e:  # noqa: BLE001 — a diagnostic never fails the caller
+        print(f"    could not be read: {e}")
+        return
+
+    objects = jsonld.extract_objects(body)
+    events = [e for e in (jsonld.parse_event(o, url) for o in objects) if e]
+    print(f"    JSON-LD: {len(objects)} object(s) "
+          f"{sorted({str(o.get('@type')) for o in objects})}, "
+          f"{len(events)} of them Events")
+    for event in events[:3]:
+        print(f"      {event['start_date']}..{event['end_date']}  "
+              f"{event['title'][:60]} @ {event['location_name'] or '(unnamed)'} "
+              f"{event['location_postcode']}")
+    if events:
+        return
+
+    print(domscan.describe(domscan.scan(body, url), indent="    "))
+    print("    --- structure")
+    print(domscan.describe_deep(domscan.deep_scan(body), indent="    "))
 
 
 def probe_conventional_feeds(fetcher, base):
@@ -262,6 +301,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", required=True, help="site root to examine")
     parser.add_argument("--cache", default="", help="page cache dir")
+    parser.add_argument("--scan-newest", action="store_true",
+                        help="also look inside the most recently changed "
+                             "event page, which is the next question every "
+                             "time the URLs alone turn out to be useless")
     parser.add_argument("--skip-sitemap", action="store_true",
                         help="skip walking the sitemap, which is slow on a "
                              "large site — useful when only the APIs and "
@@ -280,7 +323,8 @@ def main():
     base = args.url if args.url.endswith("/") else args.url + "/"
     declared = robots_report(fetcher, base)
     if not args.skip_sitemap:
-        sitemap_report(fetcher, declared or [urljoin(base, "sitemap.xml")])
+        sitemap_report(fetcher, declared or [urljoin(base, "sitemap.xml")],
+                       scan_newest=args.scan_newest)
     if not args.skip_probes:
         probe_event_apis(fetcher, base)
         probe_conventional_feeds(fetcher, base)
