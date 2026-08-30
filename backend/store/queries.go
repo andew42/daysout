@@ -156,27 +156,51 @@ func (s *Store) Destinations(lat, lon, maxMinutes float64, categories []string) 
 	return result, nil
 }
 
+// EventsResult is the events to show plus an account of what was left
+// out, and why.
+//
+// Silently filtered results are how a source can report five events on the
+// Sources page and show none here, with nothing to explain the difference.
+// The settings are usually right and the answer is usually "further than
+// an hour away" — but the user has to be told that, not left guessing.
+type EventsResult struct {
+	Events   []Event        `json:"events"`
+	Excluded EventsExcluded `json:"excluded"`
+}
+
+// EventsExcluded counts events that exist but were filtered out.
+type EventsExcluded struct {
+	TooFar         int     `json:"tooFar"`
+	WrongCategory  int     `json:"wrongCategory"`
+	Later          int     `json:"later"`
+	NearestName    string  `json:"nearestName"`
+	NearestMinutes float64 `json:"nearestMinutes"`
+}
+
 // Events returns events running some time in the next `days` days at
-// destinations within maxMinutes drive, ordered by distance from home.
-func (s *Store) Events(lat, lon, maxMinutes float64, days int, categories []string) ([]Event, error) {
+// destinations within maxMinutes drive, ordered by distance from home,
+// along with a count of the ones that exist but did not qualify.
+func (s *Store) Events(lat, lon, maxMinutes float64, days int, categories []string) (EventsResult, error) {
 
 	today := time.Now().Format("2006-01-02")
 	horizon := time.Now().AddDate(0, 0, days).Format("2006-01-02")
 
+	// Deliberately not filtered by the horizon in SQL: an event just
+	// beyond it is the most useful thing to be able to mention.
 	rows, err := s.DB.Query(
 		`SELECT e.id, e.title, e.description, e.url, e.start_date, e.end_date,
 		        e.category,
 		        d.id, d.name, d.category, d.description, d.url, d.postcode,
 		        d.lat, d.lon, d.source
 		 FROM events e JOIN destinations d ON d.id = e.destination_id
-		 WHERE e.end_date >= ? AND e.start_date <= ?
-		 ORDER BY e.start_date`, today, horizon)
+		 WHERE e.end_date >= ?
+		 ORDER BY e.start_date`, today)
 	if err != nil {
-		return nil, err
+		return EventsResult{}, err
 	}
 	defer rows.Close()
 
-	result := []Event{}
+	result := EventsResult{Events: []Event{}}
 	for rows.Next() {
 		var e Event
 		d := &e.Destination
@@ -184,25 +208,43 @@ func (s *Store) Events(lat, lon, maxMinutes float64, days int, categories []stri
 			&e.StartDate, &e.EndDate, &e.Category,
 			&d.ID, &d.Name, &d.Category, &d.Description, &d.URL,
 			&d.Postcode, &d.Lat, &d.Lon, &d.Source); err != nil {
-			return nil, err
-		}
-		if len(categories) > 0 && !slices.Contains(categories, d.Category) {
-			continue
+			return EventsResult{}, err
 		}
 		d.DistanceKm = HaversineKm(lat, lon, d.Lat, d.Lon)
 		d.DriveMinutes = DriveMinutes(d.DistanceKm)
 		e.Ongoing = isOngoing(e.StartDate, e.EndDate)
-		if d.DriveMinutes <= maxMinutes {
-			result = append(result, e)
+
+		// An event's own category is as good an answer as its venue's: a
+		// craft fair at a historic house is both, and hiding it because
+		// the house is not ticked would be wrong.
+		if len(categories) > 0 &&
+			!slices.Contains(categories, d.Category) &&
+			!(e.Category != "" && slices.Contains(categories, e.Category)) {
+			result.Excluded.WrongCategory++
+			continue
 		}
+		if d.DriveMinutes > maxMinutes {
+			result.Excluded.TooFar++
+			if result.Excluded.NearestName == "" ||
+				d.DriveMinutes < result.Excluded.NearestMinutes {
+				result.Excluded.NearestName = d.Name
+				result.Excluded.NearestMinutes = d.DriveMinutes
+			}
+			continue
+		}
+		if e.StartDate > horizon {
+			result.Excluded.Later++
+			continue
+		}
+		result.Events = append(result.Events, e)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return EventsResult{}, err
 	}
 
 	// Special events first, then standing programmes; nearest first within
 	// each, as asked for.
-	slices.SortFunc(result, func(a, b Event) int {
+	slices.SortFunc(result.Events, func(a, b Event) int {
 		if a.Ongoing != b.Ongoing {
 			if a.Ongoing {
 				return 1

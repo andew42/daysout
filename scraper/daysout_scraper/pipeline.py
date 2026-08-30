@@ -105,7 +105,7 @@ def run_source(db, fetcher, source, max_pages=0):
                 # never for claiming an event belongs to a place we hold.
                 created = dbmod.ensure_venue(
                     db, source.name, venue_label, venue_postcode,
-                    event.get("category") or "venue")
+                    event.get("category") or "venue", event.get("url", ""))
                 if created:
                     destination_id = dbmod.find_destination_id(db, source.name, created)
 

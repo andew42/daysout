@@ -118,16 +118,17 @@ func EventsHandler(s *store.Store) http.HandlerFunc {
 		}
 		minutes := queryFloat(r, "minutes", 60)
 		days := queryInt(r, "days", 7)
-		events, err := s.Events(lat, lon, minutes, days, queryCategories(r))
+		result, err := s.Events(lat, lon, minutes, days, queryCategories(r))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"home":    map[string]float64{"lat": lat, "lon": lon},
-			"minutes": minutes,
-			"days":    days,
-			"events":  events,
+			"home":     map[string]float64{"lat": lat, "lon": lon},
+			"minutes":  minutes,
+			"days":     days,
+			"events":   result.Events,
+			"excluded": result.Excluded,
 		})
 	}
 }

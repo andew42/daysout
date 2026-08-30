@@ -8,6 +8,7 @@ re-run updates rows instead of duplicating them.
 import re
 import sqlite3
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 
 def connect(path):
@@ -158,7 +159,7 @@ def purge_seed(db):
         db.execute("DELETE FROM events WHERE source = 'seed'")
 
 
-def ensure_venue(db, source, name, postcode, category="venue"):
+def ensure_venue(db, source, name, postcode, category="venue", url=""):
     """Make sure a destination exists for an event's venue, creating it from
     the venue postcode when we have never seen the place before.
 
@@ -166,6 +167,10 @@ def ensure_venue(db, source, name, postcode, category="venue"):
     destination. Geocoding it from the local postcode table means an event
     brings its own location, so it can be sorted by distance like any
     other — without which a new source contributes nothing usable.
+
+    The url is the event's own page reduced to its site, because a venue
+    outlives the event that introduced it. Without it these destinations
+    carry no link at all, which is why their map pins had nothing to click.
 
     Returns the destination source_id to link to, or None.
     """
@@ -180,9 +185,12 @@ def ensure_venue(db, source, name, postcode, category="venue"):
         "SELECT source_id FROM destinations WHERE source = ? AND source_id = ?",
         (source, name)).fetchone()
     if row:
+        # Also fill in a link for venues created before we recorded one.
         db.execute(
-            "UPDATE destinations SET last_seen = ? WHERE source = ? AND source_id = ?",
-            (ts, source, name))
+            "UPDATE destinations SET last_seen = ?,"
+            " url = CASE WHEN url = '' THEN ? ELSE url END"
+            " WHERE source = ? AND source_id = ?",
+            (ts, site_root(url), source, name))
         return row[0]
 
     coordinates = geocode(db, postcode) if postcode else None
@@ -193,11 +201,28 @@ def ensure_venue(db, source, name, postcode, category="venue"):
         """INSERT INTO destinations
              (name, category, description, url, postcode, lat, lon,
               source, source_id, first_seen, last_seen)
-           VALUES (?, ?, '', '', ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT (source, source_id) DO UPDATE SET last_seen = excluded.last_seen""",
-        (name, category, postcode, coordinates[0], coordinates[1],
-         source, name, ts, ts))
+           VALUES (?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (source, source_id) DO UPDATE SET
+             url = CASE WHEN destinations.url = '' THEN excluded.url
+                        ELSE destinations.url END,
+             last_seen = excluded.last_seen""",
+        (name, category, site_root(url), postcode, coordinates[0],
+         coordinates[1], source, name, ts, ts))
     return name
+
+
+def site_root(url):
+    """The site an event page belongs to: "https://host/".
+
+    A venue outlives the event that introduced it, so linking its pin at
+    one event's page would rot; the site keeps working.
+    """
+    if not url:
+        return ""
+    parts = urlsplit(url)
+    if not parts.scheme or not parts.netloc:
+        return ""
+    return f"{parts.scheme}://{parts.netloc}/"
 
 
 def geocode(db, postcode):

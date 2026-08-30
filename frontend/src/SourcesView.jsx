@@ -3,6 +3,7 @@ import {
   addSource, deleteSource, fetchContribution, fetchSources, updateSource,
 } from './api.jsx'
 import { ALL_CATEGORIES } from './settings.jsx'
+import { webURL } from './links.jsx'
 
 // What each extractor does, in the terms someone adding a site can judge.
 // 'auto' probes the URL and picks one of the others, which is the right
@@ -80,7 +81,7 @@ function ContributionList({ contribution }) {
               <li key={`e${i}`}>
                 <span className="when">{event.when}</span>
                 {event.url
-                  ? <a href={event.url} target="_blank" rel="noreferrer">{event.title}</a>
+                  ? <a href={webURL(event.url)} target="_blank" rel="noreferrer">{event.title}</a>
                   : <span>{event.title}</span>}
                 <span className="where">
                   {event.where}{event.postcode && ` · ${event.postcode}`}
@@ -367,7 +368,7 @@ export default function SourcesView() {
                   />
                 </strong>
                 {source.url
-                  ? <a href={source.url} target="_blank" rel="noreferrer">{source.url}</a>
+                  ? <a href={webURL(source.url)} target="_blank" rel="noreferrer">{source.url}</a>
                   : <span className="source-meta">built into the scraper</span>}
                 {!source.builtIn && (
                   <span className="source-meta">

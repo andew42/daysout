@@ -127,3 +127,44 @@ class TestPlacement(unittest.TestCase):
         }])
         self.assertTrue(ok)
         self.assertEqual(rows, [])
+
+
+class TestVenueLink(unittest.TestCase):
+    """A venue created from an event needs something to link to.
+
+    Its map pin showed the name, the drive time and nothing else, because
+    ensure_venue never recorded a URL.
+    """
+
+    def setUp(self):
+        self.db = open_db()
+
+    def venue_url(self):
+        return self.db.execute("SELECT url FROM destinations").fetchone()[0]
+
+    def run_with(self, url):
+        pipeline.run_source(self.db, None, FakeSource([("event", {
+            "source_id": "e1",
+            "title": "Garden tour",
+            "start_date": "2026-09-05",
+            "end_date": "2026-09-05",
+            "url": url,
+            "location_name": "",
+            "location_postcode": "M2 5PD",
+        })]))
+
+    def test_the_venue_links_to_the_site_not_the_event_page(self):
+        # A venue outlives the event that introduced it, so linking it at
+        # one event's page would rot.
+        self.run_with("https://www.stonor.com/whats-on/garden-tour-5-sept/")
+        self.assertEqual(self.venue_url(), "https://www.stonor.com/")
+
+    def test_an_event_with_no_url_leaves_the_venue_without_one(self):
+        self.run_with("")
+        self.assertEqual(self.venue_url(), "")
+
+    def test_a_venue_created_before_this_gains_a_link(self):
+        self.run_with("")
+        self.assertEqual(self.venue_url(), "")
+        self.run_with("https://www.stonor.com/whats-on/garden-tour-5-sept/")
+        self.assertEqual(self.venue_url(), "https://www.stonor.com/")

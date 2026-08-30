@@ -5,6 +5,7 @@ import { layers, namedFlavor } from '@protomaps/basemaps'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { fetchDestinations, fetchStatus } from './api.jsx'
 import { CATEGORY_COLORS, loadSettings } from './settings.jsx'
+import { webURL } from './links.jsx'
 
 // Register the pmtiles:// protocol once for the whole app. Pass the handler
 // by reference: MapLibre calls it with (requestParameters, abortController)
@@ -73,16 +74,30 @@ function radiusCircle(home, minutes) {
   }
 }
 
-function popupHTML(destination) {
-  const link = destination.url
-    ? `<a href="${destination.url}" target="_blank" rel="noreferrer">Website</a>`
-    : ''
+export function popupHTML(destination) {
+  // Venues created from an event have no description, and printed a blank
+  // line where one would go.
+  const lines = [`<strong>${escapeHTML(destination.name)}</strong>`]
+  if (destination.description) lines.push(escapeHTML(destination.description))
   const events = destination.upcomingEvents > 0
-    ? `<br>${destination.upcomingEvents} upcoming event${destination.upcomingEvents > 1 ? 's' : ''}`
+    ? `, ${destination.upcomingEvents} upcoming event${destination.upcomingEvents > 1 ? 's' : ''}`
     : ''
-  return `<strong>${destination.name}</strong><br>
-    ${destination.description}<br>
-    ~${Math.round(destination.driveMinutes)} min drive${events}<br>${link}`
+  lines.push(`~${Math.round(destination.driveMinutes)} min drive${events}`)
+  if (destination.postcode) lines.push(escapeHTML(destination.postcode))
+  const link = webURL(destination.url)
+  if (link) {
+    lines.push(`<a href="${escapeHTML(link)}" target="_blank" ` +
+               `rel="noreferrer">Website</a>`)
+  }
+  return lines.join('<br>')
+}
+
+// Names and descriptions come from scraped pages, so they reach this
+// as untrusted text and must not be pasted into HTML as they stand.
+function escapeHTML(text) {
+  return String(text).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]))
 }
 
 // Layers the basemap style draws from; if the archive has none of these the
