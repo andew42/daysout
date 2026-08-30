@@ -11,6 +11,7 @@ event brings its destination with it, which is what makes distance
 sorting work for sites we have never seen before.
 """
 
+import html
 import json
 import logging
 import re
@@ -19,7 +20,7 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
-from .. import discover, domscan, ical, jsonld, postcode, slugdate
+from .. import dates, discover, domscan, ical, jsonld, postcode, slugdate
 from ..sitemap_source import sitemap_urls
 
 log = logging.getLogger(__name__)
@@ -53,11 +54,17 @@ find_postcode = postcode.find
 
 
 def _plain(value):
-    """WordPress gives a string or {'rendered': '<p>…</p>'}; want the text."""
+    """WordPress gives a string or {'rendered': '<p>…</p>'}; want the text.
+
+    Entities are decoded twice over because the API double-encodes them:
+    "Knights&amp;#39; Tournament" survives one pass as "Knights&#39;
+    Tournament", which is what reached the page and the map pins.
+    """
     if isinstance(value, dict):
         value = value.get("rendered", "")
     text = str(value or "")
-    return " ".join(BeautifulSoup(text, "html.parser").get_text(" ").split())
+    text = " ".join(BeautifulSoup(text, "html.parser").get_text(" ").split())
+    return " ".join(html.unescape(text).split())
 
 
 class FeedSource:
@@ -154,8 +161,10 @@ class FeedSource:
                 if parsed:
                     structured = True
                     found += 1
-                    yield "event", self._event(
+                    usable = self._event(
                         parsed, f"{parsed['title']}-{parsed['start_date']}")
+                    if usable:
+                        yield "event", usable
             if structured:
                 continue
 
@@ -173,10 +182,10 @@ class FeedSource:
     def _event_from_url(self, url, body):
         """An event whose dates come from its URL, or None."""
 
-        dates = slugdate.parse(url)
-        if not dates:
+        from_slug = slugdate.parse(url)
+        if not from_slug:
             return None
-        start, end = dates
+        start, end = from_slug
         return self._event({
             "title": _page_title(body) or slugdate.title_from(url),
             "description": "",
@@ -192,8 +201,10 @@ class FeedSource:
         for index, event in enumerate(ical.parse(text)):
             if max_pages and index >= max_pages:
                 break
-            yield "event", self._event(
+            usable = self._event(
                 event, event.get("uid") or f"{event['title']}-{event['start_date']}")
+            if usable:
+                yield "event", usable
 
     def _from_jsonld(self, fetcher, render=False):
         body = fetcher.get(self.url, render=render)
@@ -202,8 +213,10 @@ class FeedSource:
             parsed = jsonld.parse_event(obj, self.url)
             if parsed:
                 found += 1
-                yield "event", self._event(
+                usable = self._event(
                     parsed, f"{parsed['title']}-{parsed['start_date']}")
+                if usable:
+                    yield "event", usable
         if render:
             log.info("%s: %d event(s) in the rendered page (%d bytes)",
                      self.name, found, len(body))
@@ -271,8 +284,10 @@ class FeedSource:
         """One API record in the shape the pipeline stores, or None."""
 
         title = _plain(event.get("title"))
-        start = str(event.get("start_date") or "")[:10]
-        if not title or len(start) != 10:
+        # Not [:10]: "02/05/2026 10:00:00" is ten characters of the right
+        # length and the wrong order, and passed straight through.
+        start = dates.to_iso(event.get("start_date"))
+        if not title or not start:
             return None
         venue = event.get("venue") or {}
         location = _plain(venue.get("venue"))
@@ -282,22 +297,34 @@ class FeedSource:
                 "description": _plain(event.get("description"))[:400],
                 "url": event.get("url") or self.url,
                 "start_date": start,
-                "end_date": str(event.get("end_date") or start)[:10] or start,
+                "end_date": dates.to_iso(event.get("end_date")) or start,
                 "location_name": location,
                 "location_postcode": _plain(venue.get("zip")).upper(),
             },
             str(event.get("id") or f"{title}-{start}"))
 
     def _event(self, event, source_id):
-        """Normalise into the shape the pipeline stores, carrying the venue."""
+        """Normalise into the shape the pipeline stores, carrying the venue.
+
+        Returns None when the dates are not dates. Every route in — API,
+        iCal, JSON-LD, sitemap — passes through here, so this is the one
+        place that can promise the store gets ISO.
+        """
+        start = dates.to_iso(event.get("start_date"))
+        if not start:
+            log.warning("%s: unusable start date %r for %r", self.name,
+                        event.get("start_date"), event.get("title", "")[:40])
+            return None
+        end = dates.to_iso(event.get("end_date")) or start
+
         venue = event.get("location_name", "")
         return {
             "source_id": source_id[:200],
             "title": event["title"],
             "description": event.get("description", ""),
             "url": event.get("url", "") or self.url,
-            "start_date": event["start_date"],
-            "end_date": event.get("end_date", event["start_date"]),
+            "start_date": start,
+            "end_date": end,
             "category": self.category,
             # The venue as published: a name, plus its postcode — from the
             # structured address where the site provides one, otherwise

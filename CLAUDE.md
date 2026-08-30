@@ -106,6 +106,15 @@ daysout/
   National Trust must never be given kind='browser'; `refusedHosts` in
   `backend/store/sources.go` keeps it out of the Sources tab, and the code
   source stops rather than pushes on.
+- **Dates are ISO or they are nothing** (`scraper/daysout_scraper/dates.py`).
+  They are stored as text and every query compares them as text, so a date
+  in another shape does not look odd — it fails `end_date >= today` and the
+  event is invisible while the run still reports it linked. Stonor's events
+  API answers "02/05/2026 10:00:00", whose first ten characters are the
+  right length and the wrong order, and all five of its events sat in the
+  database unseen. `dates.to_iso` normalises on every route in, and
+  `db.upsert_event` refuses anything that is not `YYYY-MM-DD` rather than
+  storing it quietly.
 - **Historic Houses** (`sources/historic_houses.py`) covers the privately
   owned houses the two big charities leave out. Its `house-sitemap.xml` is
   one entry per house and carries no events, so it contributes places only,

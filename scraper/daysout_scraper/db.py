@@ -5,10 +5,13 @@ the site stays up. All writes are upserts keyed on (source, source_id) so a
 re-run updates rows instead of duplicating them.
 """
 
+import logging
 import re
 import sqlite3
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
+
+log = logging.getLogger(__name__)
 
 
 def connect(path):
@@ -120,12 +123,30 @@ def touch_destination(db, destination_id, source):
         (now(), destination_id, source))
 
 
+ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
 def upsert_event(db, source, event, destination_id):
     """event keys: source_id, title, description, url, start_date, end_date
-    (ISO dates), category. destination_id is the place it happens at."""
+    (ISO dates), category. destination_id is the place it happens at.
+
+    The ISO check is not belt and braces. Dates are stored as text and
+    every query compares them as text, so a date in any other shape is
+    not merely odd — it fails `end_date >= today` and the event becomes
+    invisible while every count still reports it as linked. Stonor's five
+    events sat in the database like that, stored as "02/05/2026", with
+    the run reporting 5/5 linked. Refusing the row makes that loud.
+    """
     ts = now()
     if destination_id is None:
         return False
+
+    for field in ("start_date", "end_date"):
+        value = event.get(field, "")
+        if not ISO_DATE_RE.match(str(value)):
+            log.warning("%s: refusing %r — %s is %r, not ISO (YYYY-MM-DD)",
+                        source, str(event.get("title", ""))[:40], field, value)
+            return False
     row = (destination_id,)
     db.execute(
         """INSERT INTO events
