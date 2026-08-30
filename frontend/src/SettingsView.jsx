@@ -8,7 +8,16 @@ export default function SettingsView() {
   const [checkResult, setCheckResult] = useState('')
   const navigate = useNavigate()
 
-  const update = patch => setSettings(s => ({ ...s, ...patch }))
+  // Persist as you go, except the postcode, which is only worth keeping
+  // once it geocodes. A slider that moved on screen but saved nothing
+  // until the Save button was pressed left the app running on the old
+  // limit while showing the new one — the setting looked applied and was
+  // not, which is indistinguishable from the filter being broken.
+  const update = patch => setSettings(s => {
+    const next = { ...s, ...patch }
+    if (!('postcode' in patch)) saveSettings(next)
+    return next
+  })
 
   const toggleCategory = id =>
     update({
@@ -78,7 +87,10 @@ export default function SettingsView() {
         ))}
       </fieldset>
 
-      <button type="submit">Save</button>
+      <button type="submit">Save postcode</button>
+      <p className="notice">
+        Drive time, look-ahead and categories apply as you change them.
+      </p>
     </form>
   )
 }
