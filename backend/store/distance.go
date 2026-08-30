@@ -6,7 +6,7 @@ import "math"
 // multiply by a factor, then assume an average mixed-driving speed. Accurate
 // to roughly ±15 minutes which is fine for "what's within an hour".
 const (
-	RoadWiggleFactor = 1.3
+	RoadWiggleFactor = 1.2
 	AverageSpeedKmh  = 60.0
 )
 

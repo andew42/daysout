@@ -123,7 +123,7 @@ Python scraper (scraper/) ── daily systemd timer, upserts via WAL
 Offline data comes from three one-off downloads (see `setup/README.md`):
 OS Code-Point Open for postcode→coordinates, a Protomaps PMTiles extract
 of Great Britain for the map, and the basemap fonts/sprites. Drive time
-is estimated as great-circle distance × 1.3 road-wiggle at 60 km/h
+is estimated as great-circle distance × 1.2 road-wiggle at 60 km/h
 average — roughly ±15 minutes, fine for a Saturday-morning glance.
 
 ## Install (LXD container or any systemd Linux)

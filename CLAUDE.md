@@ -39,7 +39,7 @@ daysout/
   server as plain range requests; MapLibre GL renders it client-side.
   Fonts/sprites served locally from `data/basemap/`. Attribution "© 
   OpenStreetMap contributors" is required and shown on the map.
-- **Drive time** = haversine km × 1.3 ÷ 60 km/h (constants in
+- **Drive time** = haversine km × 1.2 ÷ 60 km/h (constants in
   `backend/store/distance.go`). One hour ≈ 46 km crow-flies.
 - **Schema**: `destinations` ↔ `events` (FK), upsert key `(source,
   source_id)`, `last_seen` ages out rows a source stops reporting. The

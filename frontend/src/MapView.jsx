@@ -59,8 +59,15 @@ function buildStyle(tilesAvailable, spriteUrl) {
 
 // Approximate drive-time limit as a circle: invert the drive-time formula to
 // get the crow-flies radius, then build a geojson polygon around home.
+//
+// These two must match backend/store/distance.go — the circle is drawn here
+// but every distance shown inside it is computed there, so a factor changed
+// on one side alone would draw a ring that disagrees with its own contents.
+const ROAD_WIGGLE_FACTOR = 1.2
+const AVERAGE_SPEED_KMH = 60
+
 function radiusCircle(home, minutes) {
-  const radiusKm = (minutes / 60) * 60 / 1.3
+  const radiusKm = (minutes / 60) * AVERAGE_SPEED_KMH / ROAD_WIGGLE_FACTOR
   const coordinates = []
   for (let i = 0; i <= 72; i++) {
     const angle = (i / 72) * 2 * Math.PI
