@@ -7,6 +7,16 @@ on:
     branches: [master]
   workflow_dispatch:
 
+# The rolling release is one mutable tag, published by deleting and
+# recreating it. Two pushes in quick succession therefore race: the second
+# run's `gh release delete latest --cleanup-tag` can pull the tag out from
+# under the first, whose `create` then fails with a 403 that reads like a
+# permissions problem and is not. Let a newer push cancel an older run —
+# the release only ever reflects the newest commit anyway.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: Backend (Go)

@@ -57,3 +57,50 @@ def _valid(year, month, day):
         return date(year, month, day).isoformat()
     except ValueError:
         return ""
+
+
+MONTHS = {name: number for number, names in enumerate(
+    [("january", "jan"), ("february", "feb"), ("march", "mar"),
+     ("april", "apr"), ("may",), ("june", "jun"), ("july", "jul"),
+     ("august", "aug"), ("september", "sep", "sept"), ("october", "oct"),
+     ("november", "nov"), ("december", "dec")], start=1)
+    for name in names}
+
+_MONTH_NAMES = "|".join(sorted(MONTHS, key=len, reverse=True))
+
+# "5 - 6 December 2026", "18 - 20 September 2026", "4 September 2026",
+# "29 August - 1 September 2026" — how a British listing writes a run of
+# days. The year appears once, at the end, however many days it spans.
+_RANGE_RE = re.compile(
+    rf"(?P<d1>\d{{1,2}})\s*(?:(?P<m1>{_MONTH_NAMES})\b)?"
+    rf"(?:\s*(?:-|–|—|to)\s*(?P<d2>\d{{1,2}})\s*(?:(?P<m2>{_MONTH_NAMES})\b)?)?"
+    rf"\s*(?P<year>\d{{4}})",
+    re.IGNORECASE)
+
+
+def parse_range(text):
+    """'5 - 6 December 2026' -> ('2026-12-05', '2026-12-06').
+
+    Returns ('', '') for anything it cannot read. A single day comes back
+    as the same date twice, which is how the store holds a one-day event.
+    """
+    match = _RANGE_RE.search(" ".join(str(text or "").split()))
+    if not match:
+        return "", ""
+
+    year = int(match.group("year"))
+    # A range written "5 - 6 December" names its month once, at the end.
+    month2 = match.group("m2") or match.group("m1")
+    month1 = match.group("m1") or month2
+    if not month1:
+        return "", ""
+
+    start = _valid(year, MONTHS[month1.lower()], int(match.group("d1")))
+    if not match.group("d2"):
+        return (start, start) if start else ("", "")
+
+    end = _valid(year, MONTHS[month2.lower()], int(match.group("d2")))
+    # "29 December - 2 January 2027" runs into the next year.
+    if start and end and end < start:
+        end = _valid(year + 1, MONTHS[month2.lower()], int(match.group("d2")))
+    return (start, end) if start and end else ("", "")

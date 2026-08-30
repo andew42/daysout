@@ -126,6 +126,20 @@ daysout/
   `seed_sources.py` deletes the row, deliberately *not* via `RETIRED`,
   whose `removed_sources` entry would also hide the code source from the
   Sources tab.
+- **Shuttleworth** (`sources/shuttleworth.py`) is one venue whose event
+  pages carry nothing machine-readable — no Event JSON-LD, no `<time>`, no
+  date-classed elements, no date in the URL. The date is read from the
+  markup, anchored to the element rather than to the first date on the
+  page: every page also advertises the same six *other* events, so "the
+  page has date-looking text" (seven phrases per page) is worthless here.
+  `domscan.date_context` is what found the anchor, and is the tool to
+  reach for on the next site like it.
+- **A code source and a `sources` row must never share a name**: both lists
+  run in one pass and the loser overwrites the winner's result.
+  `CodeSources` in `backend/store/sources.go` names the code sources so a
+  name with no row is listed only if one claims it — otherwise it is
+  leftover `scrape_runs` history posing as an unremovable built-in. A test
+  reads the scraper's registry to keep the two lists in step.
 - **Sources live in the database**, not only in code: the `sources` table
   holds (name, url, kind, category, enabled). `sources/feeds.py` turns a
   row into a runnable source, so adding a listing site is an INSERT — which

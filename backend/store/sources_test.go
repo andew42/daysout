@@ -466,13 +466,15 @@ func TestContributionShowsADateRangeWhenThereIsOne(t *testing.T) {
 // behind. The union brought that history back as a source with no row,
 // which reads as built in: listed for ever, never scraped (the scraper
 // has no row to run), and impossible to remove. shuttleworth-events sat
-// like that on the live site, reporting a failure from hours earlier.
+// like that on the live site, reporting a failure from hours earlier —
+// until it was given a parser of its own, which is why the ghost here is
+// a name no code source claims.
 func TestLeftoverHistoryIsNotASource(t *testing.T) {
 
 	store := newTestStore(t)
 	if _, err := store.DB.Exec(
 		`INSERT INTO scrape_runs (source, started_at, finished_at, ok, message)
-		 VALUES ('shuttleworth-events', '2026-08-30T17:55:41Z',
+		 VALUES ('a-source-that-was-removed', '2026-08-30T17:55:41Z',
 		         '2026-08-30T17:55:53Z', 0, 'no places found'),
 		        ('english_heritage', '2026-08-30T21:36:41Z',
 		         '2026-08-30T21:37:02Z', 1, '392 places')`); err != nil {
@@ -487,7 +489,7 @@ func TestLeftoverHistoryIsNotASource(t *testing.T) {
 	for _, s := range sources {
 		names[s.Name] = true
 	}
-	if names["shuttleworth-events"] {
+	if names["a-source-that-was-removed"] {
 		t.Error("a name with no row and no code source was listed as a source")
 	}
 	if !names["english_heritage"] {

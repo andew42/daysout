@@ -91,6 +91,7 @@ func sourceTimestamp() string {
 // from the Sources tab the moment its row was gone.
 var CodeSources = []string{
 	"wikidata", "english_heritage", "national_trust", "historic-houses",
+	"shuttleworth-events",
 }
 
 // sourcesQuery lists every source the scraper has, with what each one is

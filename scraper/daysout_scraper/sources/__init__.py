@@ -6,16 +6,19 @@ event listings. National Trust contributes events only — one listing page
 per property — while its properties keep coming from Wikidata. That source
 stops itself the moment the site answers with a bot-protection challenge
 rather than working around one. Historic Houses supplies the privately
-owned houses both of the big charities leave out. See each module's
-docstring.
+owned houses both of the big charities leave out, and Shuttleworth its
+own air shows — one venue whose pages carry no structured data at all.
+See each module's docstring.
 """
 
 from .english_heritage import EnglishHeritage
 from .historic_houses import HistoricHouses
 from .national_trust import NationalTrust
+from .shuttleworth import Shuttleworth
 from .wikidata import Wikidata
 
-IMPLEMENTED = [Wikidata, EnglishHeritage, NationalTrust, HistoricHouses]
+IMPLEMENTED = [Wikidata, EnglishHeritage, NationalTrust, HistoricHouses,
+               Shuttleworth]
 
 # Researched, not yet implemented:
 #   ngs.py       National Garden Scheme open days (garden events)
