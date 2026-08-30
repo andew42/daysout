@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { addSource, deleteSource, fetchSources, setSourceEnabled } from './api.jsx'
+import { addSource, deleteSource, fetchSources, setSourceEnabled, testSource } from './api.jsx'
 import { ALL_CATEGORIES } from './settings.jsx'
 
 // What each extractor does, in the terms someone adding a site can judge.
@@ -22,6 +22,22 @@ function verdict(source) {
   return `publishes: ${source.lastStatus}`
 }
 
+// What the scraper did, in its own words. The log matters more than the
+// verdict: it names the pages it looked at, how many events it read, and
+// the venue of any event it could not place.
+function TestResult({ result }) {
+  return (
+    <div className={result.ok ? 'test-result ok' : 'test-result bad'}>
+      <strong>
+        {result.ok ? 'Found something' : 'Nothing usable'}
+        {result.seconds ? ` · ${result.seconds}s` : ''}
+      </strong>
+      {result.message && <div className="test-message">{result.message}</div>}
+      {result.output && <pre>{result.output}</pre>}
+    </div>
+  )
+}
+
 export default function SourcesView() {
   const [sources, setSources] = useState(null)
   const [kinds, setKinds] = useState(['auto'])
@@ -29,6 +45,9 @@ export default function SourcesView() {
   const [error, setError] = useState('')
   const [added, setAdded] = useState('')
   const [busy, setBusy] = useState(false)
+  // Which source is being tested, and the last result for each.
+  const [testing, setTesting] = useState('')
+  const [results, setResults] = useState({})
 
   const reload = () =>
     fetchSources()
@@ -71,6 +90,20 @@ export default function SourcesView() {
     }
   }
 
+  const test = async source => {
+    setError('')
+    setTesting(source.name)
+    try {
+      const result = await testSource(source.name)
+      setResults(r => ({ ...r, [source.name]: result }))
+      await reload()
+    } catch (e) {
+      setResults(r => ({ ...r, [source.name]: { ok: false, message: e.message } }))
+    } finally {
+      setTesting('')
+    }
+  }
+
   const remove = async source => {
     setError('')
     try {
@@ -87,8 +120,11 @@ export default function SourcesView() {
       <p className="sources-intro">
         Sites the scraper visits looking for events. Adding one here only
         writes it down — this server never fetches anything itself. The
-        scraper visits it on its next run (daily, 05:30) and reports back
-        what it found.
+        scraper visits it on its next run (daily, 05:30) — or press
+        <strong> Test now</strong> to run that one site immediately and see
+        what came back. A test samples the site rather than crawling it, so
+        it can add events but never remove any, and it can take a minute:
+        the scraper stays at one polite request per second.
       </p>
 
       <form className="settings-view" onSubmit={submit}>
@@ -129,8 +165,9 @@ export default function SourcesView() {
       {error && <p className="notice error">{error}</p>}
       {added && (
         <p className="notice">
-          Added as <strong>{added}</strong>. It will be visited on the next
-          scrape; its verdict appears in the list below afterwards.
+          Added as <strong>{added}</strong>. Press <strong>Test now</strong>
+          on it below to see straight away whether it publishes anything
+          usable; otherwise the next scrape will pick it up.
         </p>
       )}
 
@@ -150,6 +187,13 @@ export default function SourcesView() {
                 {source.notes && <span className="source-notes">{source.notes}</span>}
               </div>
               <div className="source-actions">
+                <button
+                  type="button"
+                  onClick={() => test(source)}
+                  disabled={testing !== ''}
+                >
+                  {testing === source.name ? 'Testing…' : 'Test now'}
+                </button>
                 <button type="button" onClick={() => toggle(source)}>
                   {source.enabled ? 'Disable' : 'Enable'}
                 </button>
@@ -161,6 +205,7 @@ export default function SourcesView() {
                   </button>
                 )}
               </div>
+              {results[source.name] && <TestResult result={results[source.name]} />}
             </li>
           ))}
         </ul>

@@ -37,9 +37,11 @@ Trust properties reach the map from Wikidata in the meantime.
 Event sources live in the `sources` table, so trying a new listing site is
 a row, not a code change — add one from the **Sources** tab in the web UI
 (or by hand, plus `python3 -m daysout_scraper.discover`). Adding a site
-only records it: the server never fetches anything itself, so the scraper
-visits it on its next run and reports back what it found, which the tab
-shows against each site.
+only records it; **Test now** then runs the scraper against that one site
+and shows what came back — the events it read, or the reason there were
+none. A test samples the site rather than crawling it, so it can add
+events but never remove any. Sites not tested by hand are picked up by
+the next daily scrape.
 Twelve candidates were tried against the real sites (August 2026), and the
 result is worth knowing before adding more:
 

@@ -117,7 +117,10 @@ func normaliseSourceURL(raw string) (string, error) {
 			return "", errors.New(reason)
 		}
 	}
-	parsed.Host = host
+	// Lower-case Host, not Hostname: the latter drops the port, which
+	// silently rewrote http://host:8123/events to http://host/events and
+	// sent the scraper somewhere nothing was listening.
+	parsed.Host = strings.ToLower(parsed.Host)
 	parsed.Fragment = ""
 	return parsed.String(), nil
 }
@@ -253,4 +256,19 @@ func (s *Store) DeleteSource(name string) error {
 	}
 	_, err = s.DB.Exec(`DELETE FROM sources WHERE name = ?`, name)
 	return err
+}
+
+// LatestRun returns the scraper's verdict from the most recent run of a
+// source: whether it succeeded and the message it recorded.
+func (s *Store) LatestRun(name string) (bool, string) {
+
+	var ok sql.NullBool
+	var message string
+	err := s.DB.QueryRow(
+		`SELECT ok, message FROM scrape_runs WHERE source = ?
+		 ORDER BY id DESC LIMIT 1`, name).Scan(&ok, &message)
+	if err != nil {
+		return false, ""
+	}
+	return ok.Valid && ok.Bool, message
 }

@@ -20,6 +20,10 @@ func TestAddSourceAcceptsWhatPeopleActuallyType(t *testing.T) {
 		// Surrounding whitespace and a fragment are noise, not intent.
 		{"  https://shows.example.com/list#top  ",
 			"https://shows.example.com/list", "shows-example-list"},
+		// A port is part of the address. Dropping it sent the scraper to
+		// port 80, where nothing was listening.
+		{"http://192.168.1.10:8123/events",
+			"http://192.168.1.10:8123/events", "192-168-1-10-events"},
 	}
 
 	for _, tc := range cases {

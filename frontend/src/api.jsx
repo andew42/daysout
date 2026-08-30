@@ -66,3 +66,11 @@ export function setSourceEnabled(name, enabled) {
 export function deleteSource(name) {
   return sendJSON(`/api/sources?name=${encodeURIComponent(name)}`, 'DELETE')
 }
+
+// Runs the scraper for one source now, instead of waiting for the daily
+// timer, and returns what it did. Bounded: it samples the site rather than
+// crawling it, so it can add rows but never purge any. Can take a minute —
+// the scraper stays at one request per second.
+export function testSource(name) {
+  return sendJSON('/api/sources/test', 'POST', { name })
+}

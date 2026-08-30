@@ -46,6 +46,14 @@ jobs:
           import json, sys
           body = json.load(sys.stdin)
           print('sources listed:', len(body['sources']), '| kinds:', ','.join(body['kinds']))"
+          # The Test now button runs the scraper for one source. Check the
+          # route answers and refuses an unknown name; testing a real
+          # source here would just duplicate the scrape step below.
+          curl -s -o /tmp/test-source.json -w "test endpoint: %{http_code}\n" \
+            -X POST -H 'Content-Type: application/json' \
+            -d '{"name":"definitely-not-a-source"}' \
+            http://localhost:8080/api/sources/test
+          cat /tmp/test-source.json; echo
           python3 -c "
           import json
           s = json.load(open('/tmp/status.json'))

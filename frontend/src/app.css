@@ -225,3 +225,25 @@ body {
 }
 .source-actions button:hover { background: #eef0e8; }
 .source-actions button.danger { color: #a03024; }
+
+.test-result {
+  flex-basis: 100%;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--accent);
+  background: var(--ground);
+  font-size: 0.82rem;
+}
+.test-result.bad { border-left-color: #a03024; }
+.test-message { color: var(--muted); margin-top: 2px; }
+.test-result pre {
+  margin: 6px 0 0;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+/* The row is a flex line; the result needs a line of its own under it. */
+.source { flex-wrap: wrap; }

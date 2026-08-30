@@ -111,9 +111,18 @@ daysout/
   row into a runnable source, so adding a listing site is an INSERT — which
   is what lets the **Sources tab** (`frontend/src/SourcesView.jsx`,
   `/api/sources`, `backend/store/sources.go`) add one from the browser.
-  Adding a source only writes the row: the server never fetches anything,
-  so the site is visited by the scraper on its next run and its verdict
-  shows up in `last_status`. Rows added there are marked in `notes` with
+  Adding a source only writes the row. **Test now**
+  (`POST /api/sources/test`, `backend/servers/scrapetest.go`) is the one
+  place the server reaches the internet, and it does it the only way
+  anything here does — by running `python3 -m daysout_scraper --sources
+  <name> --max-pages 10`, then reporting the scrape_runs verdict and the
+  scraper's own log. Bounded, so the pipeline marks it a partial run and
+  never purges: a test can add rows, never remove any. Guards: the name
+  must match `safeSourceName` *and* exist in the table (a name starting
+  with `-` would be read as a flag), one test at a time behind a mutex so
+  a double-click can't send two crawls at one site, and a 3-minute
+  timeout. `scraperLogLines` strips Python tracebacks — forty frames buried
+  the one line worth reading — leaving the LEVEL-prefixed log. Rows added there are marked in `notes` with
   `store.UIAddedNote`, because only those are safe to delete — the scraper
   re-inserts any seeded candidate missing from the table, so seeded rows
   can only be disabled. `refusedHosts` in `sources.go` keeps National
