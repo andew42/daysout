@@ -64,6 +64,20 @@ daysout/
   --kind place|event` prints what the parser actually sees on real pages.
   The dev sandbox can't reach these sites — the deploy workflow runs it on
   the house server and the output lands in the run log.
+- **Browser scanner** (`browser.py`, source kind `browser`): renders a page
+  in headless Chromium before reading it, for sites that assemble their
+  listing client-side so the dates never reach the served HTML. Playwright
+  is an *optional* dependency — absent, browser sources are skipped with a
+  warning and the rest of the run is unaffected. `find_chromium()` reuses a
+  Chromium already on the machine (`DAYSOUT_CHROMIUM`, /usr/bin/chromium, or
+  a Playwright browsers dir whose build number no longer matches the client)
+  before falling back to Playwright's own. Rendering goes through the same
+  Fetcher, so robots.txt, the rate limit and the cache all still apply;
+  rendered pages cache under a separate key.
+- **Rendering is not for getting past a refusal.** A site that answers with
+  a bot-protection challenge (National Trust) is saying no, and a browser
+  that defeats the challenge would be evading an access control rather than
+  reading a page. NT must never be given kind='browser'.
 - **Sources live in the database**, not only in code: the `sources` table
   holds (name, url, kind, category, enabled). `sources/feeds.py` turns a
   row into a runnable source, so adding a listing site is an INSERT.

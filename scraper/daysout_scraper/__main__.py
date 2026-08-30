@@ -13,11 +13,14 @@ import os
 import sys
 from pathlib import Path
 
+from . import browser
 from . import db as dbmod
 from . import sources
-from .fetch import Fetcher
+from .fetch import USER_AGENT, Fetcher
 from .pipeline import run_source
 from .sources import feeds, seed_sources
+
+log = logging.getLogger(__name__)
 
 
 def default_db():
@@ -58,10 +61,28 @@ def main():
                     [s.name for s in feeds.load_enabled(db)]
         sys.exit(f"no matching sources; available: {', '.join(available)}")
 
+    # Rendering costs a browser launch, so start one only if a source in
+    # this run actually asks for it, and share it across them all.
+    needs_browser = any(getattr(s, "kind", "") == "browser" for s in selected)
     any_ok = False
-    for source in selected:
-        ok, _ = run_source(db, fetcher, source, max_pages=args.max_pages)
-        any_ok = any_ok or ok
+
+    def run_all():
+        ok_any = False
+        for source in selected:
+            ok, _ = run_source(db, fetcher, source, max_pages=args.max_pages)
+            ok_any = ok_any or ok
+        return ok_any
+
+    if needs_browser and browser.available():
+        with browser.Renderer(USER_AGENT) as renderer:
+            fetcher.renderer = renderer
+            any_ok = run_all()
+    else:
+        if needs_browser:
+            log.warning("browser sources will be skipped: playwright is not "
+                        "installed (pip install playwright && playwright "
+                        "install chromium)")
+        any_ok = run_all()
 
     if any_ok and not args.keep_seed:
         dbmod.purge_seed(db)

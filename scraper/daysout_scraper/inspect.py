@@ -23,7 +23,8 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup
 
-from . import jsonld, sources
+from . import browser, jsonld, sources
+from . import fetch as fetch_module
 from .fetch import Fetcher
 from .sitemap_source import sitemap_urls
 
@@ -126,6 +127,9 @@ def main():
     parser.add_argument("--url-shapes", action="store_true",
                         help="summarise the sitemap by URL shape instead of "
                              "inspecting pages")
+    parser.add_argument("--browser", action="store_true",
+                        help="render each page in a headless browser first, "
+                             "for sites that build their listing client-side")
     parser.add_argument("--newest", action="store_true",
                         help="inspect the most recently modified pages rather "
                              "than the first ones in the sitemap (the first "
@@ -141,6 +145,13 @@ def main():
 
     data = os.environ.get("DAYSOUT_DATA") or "data"
     fetcher = Fetcher(args.cache or str(Path(data) / "scrape-cache"))
+
+    renderer = None
+    if args.browser:
+        if not browser.available():
+            sys.exit("playwright is not installed (pip install playwright)")
+        renderer = browser.Renderer(fetch_module.USER_AGENT).__enter__()
+        fetcher.renderer = renderer
 
     if args.url_shapes:
         if not getattr(source, "sitemaps", None):
@@ -162,7 +173,7 @@ def main():
 
     for lastmod, url in candidates[:args.count]:
         try:
-            describe(fetcher.get(url), url)
+            describe(fetcher.get(url, render=args.browser), url)
             print(f"    sitemap lastmod: {lastmod or '(none)'}")
         except Exception as e:  # noqa: BLE001 — diagnostics never fail the caller
             print(f"\n=== {url}\n    FETCH FAILED: {e}")

@@ -37,7 +37,7 @@ class FakeFetcher:
     def __init__(self, pages):
         self.pages = pages
 
-    def get(self, url, api=False):
+    def get(self, url, api=False, render=False):
         return self.pages[url]
 
 

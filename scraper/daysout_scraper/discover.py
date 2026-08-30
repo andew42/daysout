@@ -21,14 +21,18 @@ log = logging.getLogger(__name__)
 ICAL_HINT_RE = re.compile(r"\.ics(\?|$)|/ical|webcal:|format=ical", re.IGNORECASE)
 
 
-def probe(fetcher, url):
-    """Returns a report dict describing what this URL offers."""
+def probe(fetcher, url, render=False):
+    """Returns a report dict describing what this URL offers.
+
+    render=True reads the page as a browser would, which is the only way
+    to see a listing that is assembled client-side.
+    """
 
     report = {"url": url, "formats": [], "notes": [], "event_count": 0,
               "ical_urls": [], "feed_urls": [], "sitemap_urls": []}
 
     try:
-        body = fetcher.get(url)
+        body = fetcher.get(url, render=render)
     except Exception as e:  # noqa: BLE001 — a probe reports failure, never raises
         report["notes"].append(f"fetch failed: {e}")
         return report
@@ -99,12 +103,15 @@ def main():
     from pathlib import Path
 
     from . import db as dbmod
-    from .fetch import Fetcher
+    from .fetch import USER_AGENT, Fetcher
     from .sources import seed_sources
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", default="")
     parser.add_argument("--url", default="", help="probe one URL instead of the table")
+    parser.add_argument("--browser", action="store_true",
+                        help="render the URL in a headless browser before "
+                             "probing, for client-side-rendered listings")
     parser.add_argument("--disable-empty", action="store_true",
                         help="disable sources that offer nothing usable")
     parser.add_argument("--all", action="store_true",
@@ -124,6 +131,14 @@ def main():
     fetcher = Fetcher(str(Path(path).parent / "scrape-cache"))
 
     if args.url:
+        if args.browser:
+            from . import browser
+            if not browser.available():
+                sys.exit("playwright is not installed (pip install playwright)")
+            with browser.Renderer(USER_AGENT) as renderer:
+                fetcher.renderer = renderer
+                print(describe(probe(fetcher, args.url, render=True)))
+            return
         print(describe(probe(fetcher, args.url)))
         return
 

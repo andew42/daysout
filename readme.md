@@ -43,7 +43,23 @@ result is worth knowing before adding more:
 | Food festival blog | BlogPosting JSON-LD; dates are prose |
 | UK Craft Fairs | No structured data; malformed HTTP headers |
 
-The ones that yield nothing are kept as rows, disabled, with the reason in
+Most of those "sitemap only" sites build their listings in the browser, so
+a **browser scanner** (source kind `browser`) now renders the page in
+headless Chromium before reading it — which is what a visitor's browser
+does, and nothing more. It is deliberately not used on National Trust:
+that site refuses automated clients outright, and rendering past a
+bot-protection challenge would be evading an access control rather than
+reading a page.
+
+Browser automation is optional. Without Playwright installed those sources
+are skipped with a warning and everything else runs as before:
+
+```bash
+pip install playwright && python3 -m playwright install chromium
+# or point DAYSOUT_CHROMIUM at a Chromium already on the machine
+```
+
+Sources that yield nothing even rendered are kept as rows, disabled, with the reason in
 `notes` — so the daily scrape doesn't spend requests on them and nobody
 rediscovers the same dead ends. The common thread is that these sites build
 their listings client-side or behind a search form, so the dates a visitor

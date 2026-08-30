@@ -1,2 +1,11 @@
 requests>=2.31
 beautifulsoup4>=4.12
+
+# Browser automation is optional and deliberately not listed as a
+# requirement: it is only needed for sources of kind 'browser', which render
+# a page before reading it, and it pulls in a browser download. Without it
+# those sources are skipped with a warning and everything else still runs.
+#
+#   pip install playwright && python3 -m playwright install chromium
+#
+# Or point DAYSOUT_CHROMIUM at a Chromium already on the machine.

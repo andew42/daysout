@@ -38,6 +38,8 @@ class Fetcher:
         self.session.headers["User-Agent"] = USER_AGENT
         self._robots = {}
         self._last_request = {}
+        # Set by the runner when a source needs pages rendered; see browser.py.
+        self.renderer = None
 
     def _allowed(self, url):
         host = urlparse(url).netloc
@@ -58,9 +60,15 @@ class Fetcher:
             time.sleep(REQUEST_INTERVAL_SECONDS - elapsed)
         self._last_request[host] = time.monotonic()
 
-    def get(self, url, api=False):
+    def get(self, url, api=False, render=False):
         """Fetch a URL as text, honouring robots.txt, the rate limit and the
         cache. Raises FetchDisallowed / requests exceptions on failure.
+
+        render=True loads the page in a headless browser first, for sites
+        that build their listings client-side. Rendered and plain fetches
+        are cached separately because they return different content. It
+        does not relax any check: robots.txt is still consulted and the
+        rate limit still applies.
 
         api=True is for a documented API endpoint the operator publishes for
         programmatic use. robots.txt governs crawling a site's pages — a
@@ -71,12 +79,21 @@ class Fetcher:
         well-behaved client either way. Never set this to get past a site
         that is refusing us (see sources/national_trust.py).
         """
-        cache_file = self.cache_dir / hashlib.sha256(url.encode()).hexdigest()
+        cache_key = ("render:" if render else "") + url
+        cache_file = self.cache_dir / hashlib.sha256(cache_key.encode()).hexdigest()
         if cache_file.exists() and time.time() - cache_file.stat().st_mtime < CACHE_TTL_SECONDS:
             return cache_file.read_text(encoding="utf-8")
 
         if not api and not self._allowed(url):
             raise FetchDisallowed(f"robots.txt disallows {url}")
+
+        if render:
+            if self.renderer is None:
+                raise RenderUnavailable(f"no renderer configured for {url}")
+            self._throttle(url)
+            text = self.renderer.render(url)
+            cache_file.write_text(text, encoding="utf-8")
+            return text
 
         # Busy or rate-limited is a "come back shortly", not a failure: a
         # shared query service returning 502 for one request is routine and
@@ -98,3 +115,7 @@ class Fetcher:
 
 class FetchDisallowed(Exception):
     pass
+
+
+class RenderUnavailable(Exception):
+    """A source asked for a rendered page but no browser is available."""

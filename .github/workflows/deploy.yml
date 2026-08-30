@@ -62,6 +62,31 @@ jobs:
         # a partial one, so it's safe to run every deploy.
         run: sudo /opt/daysout/setup/get-tiles.sh --data-dir /var/lib/daysout
 
+      - name: Ensure browser automation is available
+        # Sources of kind 'browser' render pages before reading them. Without
+        # Playwright they are skipped with a warning rather than failing, so
+        # this step is allowed to fail on a machine where it can't install.
+        continue-on-error: true
+        run: |
+          if python3 -c "import playwright" 2>/dev/null; then
+            echo "playwright already installed"
+          else
+            sudo pip3 install --break-system-packages playwright \
+              || sudo pip3 install playwright
+          fi
+          # Reuse a Chromium that's already here if there is one; only
+          # download Playwright's (~150 MB) when there isn't.
+          if sudo python3 -c "
+          import sys; sys.path.insert(0, '/opt/daysout/scraper')
+          from daysout_scraper import browser
+          found = browser.find_chromium()
+          print('using existing Chromium:', found or '(none found)')
+          sys.exit(0 if found else 1)"; then
+            echo "no browser download needed"
+          else
+            sudo python3 -m playwright install --with-deps chromium
+          fi
+
       - name: Scrape
         # A full crawl by default: only a complete run gathers every
         # property and every current event, and only it may purge rows that
@@ -116,6 +141,16 @@ jobs:
         run: |
           cd /opt/daysout/scraper
           sudo env DAYSOUT_DATA=/var/lib/daysout python3 -m daysout_scraper.discover || true
+
+      - name: Diagnose a rendered listing page
+        # What does a client-side listing actually contain once rendered?
+        # This is the evidence for whether reading it needs more than the
+        # structured data the browser scanner already looks for.
+        continue-on-error: true
+        run: |
+          cd /opt/daysout/scraper
+          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -m daysout_scraper.discover \
+            --url https://ngs.org.uk/gardens-open-this-coming-week/ --browser || true
 
       - name: Diagnose sources that found nothing
         # Prints what the pages of each source actually contain, so parser

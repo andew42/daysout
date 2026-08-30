@@ -68,42 +68,37 @@ URL_FIXES = [
 ]
 
 # Verdicts from running discovery and a sitemap crawl against each site on
-# real hardware (2026-08-29). Kept as rows, disabled, so the finding isn't
-# lost and nobody spends another evening rediscovering it. Re-enable any of
-# them with:  UPDATE sources SET enabled = 1 WHERE name = '...';
+# real hardware (2026-08-29), then re-tried with a browser.
 #
-# The pattern: every one of these publishes a sitemap, and every one carries
-# JSON-LD — but of type WebPage, Organization, BlogPosting or Article, never
-# Event. Their listings are built client-side or from a search form, so the
-# dates a visitor sees never appear in the HTML we can read. That is a
-# property of the sites, not a gap in the scraper: English Heritage and RHS
-# publish Event JSON-LD through exactly the same crawl and are read fine.
-DISABLE = [
+# Every one of these publishes a sitemap and JSON-LD, but of type WebPage,
+# Organization, Article or BlogPosting rather than Event: their listings are
+# assembled in the browser, so the dates never reach the served HTML. That is
+# what the browser kind is for — render the page as a visitor's browser does,
+# then read the structured data that appears.
+#
+# This is not a way past a site that is refusing us. National Trust answers
+# with a bot-protection challenge, which is a no; it stays disabled and must
+# not be given kind='browser'.
+BROWSER = [
+    ("ngs-open-gardens", "listing built client-side; retry rendered"),
+    ("ngs-find-a-garden", "garden search is client-side; retry rendered"),
+    ("historic-houses", "listing built client-side; retry rendered"),
+    ("invitation-to-view", "listing built client-side; retry rendered"),
+    ("brighton-open-houses", "listing built client-side; retry rendered"),
+    ("creative-crafts", "listing built client-side; retry rendered"),
+    ("festival-calendar-art", "listing built client-side; retry rendered"),
+    ("festival-calendar-food", "listing built client-side; retry rendered"),
+    ("festival-calendar-music", "listing built client-side; retry rendered"),
+    ("food-festivals-uk", "a blog, but its festival roundups may render dates"),
     ("uk-craft-fairs",
-     "no structured event data at all, and the server returns malformed "
-     "HTTP headers"),
-    ("ngs-open-gardens",
-     "sitemap only; garden and open-day pages carry WebPage/Organization "
-     "JSON-LD, no Event. Open-day dates are rendered client-side"),
-    ("ngs-find-a-garden",
-     "same as ngs-open-gardens: the garden search is client-side, so no "
-     "dates reach the HTML"),
-    ("historic-houses",
-     "sitemap only; pages carry WebPage/ImageObject JSON-LD, no Event"),
-    ("invitation-to-view",
-     "sitemap only; pages carry Article/FAQPage JSON-LD, no Event"),
-    ("brighton-open-houses",
-     "sitemap and an RSS feed, but no Event JSON-LD on either"),
-    ("creative-crafts",
-     "sitemap only, no structured events"),
-    ("festival-calendar-art",
-     "sitemap only; the festival listings carry no Event JSON-LD"),
-    ("festival-calendar-food", "as festival-calendar-art"),
-    ("festival-calendar-music", "as festival-calendar-art"),
-    ("food-festivals-uk",
-     "a blog: BlogPosting JSON-LD, no Event. Festival dates are prose"),
+     "no structured data in the served HTML, and its server returns malformed "
+     "HTTP headers that break a plain fetch — a browser sidesteps both"),
 ]
 
+# Nothing here yet: every candidate is worth one rendered attempt before
+# being written off. Sources that still yield nothing after rendering belong
+# here, with the reason.
+DISABLE = []
 
 def ensure(db):
     """Insert any candidate that isn't in the table yet, and apply the
@@ -127,6 +122,15 @@ def ensure(db):
         db.execute(
             "UPDATE sources SET enabled = 0, notes = ? WHERE name = ? AND notes NOT LIKE ?",
             (reason, name, f"%{reason[:20]}%"))
+
+    # Sites whose listings only exist after rendering: switch them to the
+    # browser scanner and give them another go. Only rows still on their
+    # seeded kind are changed, so a hand-tuned row is left alone.
+    for name, reason in BROWSER:
+        db.execute(
+            "UPDATE sources SET kind = 'browser', enabled = 1, notes = ? "
+            "WHERE name = ? AND kind IN ('auto', 'sitemap')",
+            (reason, name))
 
     db.commit()
     return added

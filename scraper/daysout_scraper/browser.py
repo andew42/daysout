@@ -1,0 +1,130 @@
+"""Render a page in a real browser before reading it.
+
+Most of the listing sites we tried publish nothing in their HTML because
+they build their listings client-side: the dates a visitor sees are drawn
+by JavaScript after load, so a plain fetch returns a shell. Rendering the
+page in a headless browser and then reading the result gets at exactly
+what a visitor sees, and nothing more.
+
+This is deliberately NOT a way around a site that is refusing us. A site
+that answers a plain request with a bot-protection challenge (see
+sources/national_trust.py) is saying no, and a browser that solves the
+challenge would be evading an access control rather than reading a page.
+Rendering is for pages that are freely served but assembled in the client.
+The same politeness applies as everywhere else: robots.txt is checked
+first, the honest User-Agent is sent, and one page is loaded at a time.
+
+Playwright is an optional dependency. Without it, browser sources report
+that they were skipped rather than failing the run, so a machine that
+hasn't installed it still scrapes everything else.
+"""
+
+import logging
+import os
+
+log = logging.getLogger(__name__)
+
+# An explicit Chromium to launch, rather than the build Playwright expects
+# to have downloaded itself. Set DAYSOUT_CHROMIUM to reuse a browser that is
+# already on the machine — a system chromium, or one a different Playwright
+# version installed — which saves a few hundred megabytes and survives
+# Playwright upgrades bumping their pinned build number.
+CHROMIUM_PATH = os.environ.get("DAYSOUT_CHROMIUM", "")
+
+# Common locations, tried in order when DAYSOUT_CHROMIUM isn't set.
+CHROMIUM_CANDIDATES = (
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/google-chrome",
+    "/snap/bin/chromium",
+)
+
+
+def find_chromium():
+    """An existing Chromium to use, or '' to let Playwright pick its own."""
+    if CHROMIUM_PATH:
+        return CHROMIUM_PATH
+    for candidate in CHROMIUM_CANDIDATES:
+        if os.path.exists(candidate):
+            return candidate
+    # A Playwright browser directory whose build number no longer matches
+    # the installed client still holds a perfectly good Chromium.
+    browsers = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "")
+    if browsers:
+        import glob
+        for pattern in ("chromium-*/chrome-linux/chrome",
+                        "chromium_headless_shell-*/chrome-linux/headless_shell"):
+            found = sorted(glob.glob(os.path.join(browsers, pattern)))
+            if found:
+                return found[-1]
+    return ""
+
+# A page that hasn't settled in this long is not going to.
+LOAD_TIMEOUT_MS = 30000
+# After load, give client-side rendering a moment to populate the listing.
+SETTLE_MS = 2500
+
+
+class BrowserUnavailable(Exception):
+    """Playwright or its browser isn't installed."""
+
+
+def available():
+    try:
+        import playwright.sync_api  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+class Renderer:
+    """Renders pages in one long-lived browser.
+
+    Used as a context manager so the browser starts once per run rather
+    than once per page — launching Chromium costs about a second, which
+    matters across a few dozen pages.
+    """
+
+    def __init__(self, user_agent):
+        self.user_agent = user_agent
+        self._playwright = None
+        self._browser = None
+
+    def __enter__(self):
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError as e:
+            raise BrowserUnavailable(
+                "playwright is not installed (pip install playwright)") from e
+
+        self._playwright = sync_playwright().start()
+        executable = find_chromium()
+        launch = {"headless": True}
+        if executable:
+            launch["executable_path"] = executable
+            log.info("using Chromium at %s", executable)
+        try:
+            self._browser = self._playwright.chromium.launch(**launch)
+        except Exception as e:  # noqa: BLE001 — no browser binary, usually
+            self._playwright.stop()
+            self._playwright = None
+            raise BrowserUnavailable(f"could not start Chromium: {e}") from e
+        return self
+
+    def __exit__(self, *exc):
+        if self._browser:
+            self._browser.close()
+        if self._playwright:
+            self._playwright.stop()
+
+    def render(self, url):
+        """Returns the page's HTML after client-side rendering has settled."""
+        page = self._browser.new_page(user_agent=self.user_agent)
+        try:
+            page.goto(url, wait_until="load", timeout=LOAD_TIMEOUT_MS)
+            # networkidle is unreliable on pages with polling or analytics,
+            # so wait a fixed moment for the listing to populate instead.
+            page.wait_for_timeout(SETTLE_MS)
+            return page.content()
+        finally:
+            page.close()

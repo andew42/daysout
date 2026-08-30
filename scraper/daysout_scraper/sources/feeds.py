@@ -70,6 +70,8 @@ class FeedSource:
             yield from self._from_jsonld(fetcher)
         elif kind == "sitemap":
             yield from self._from_sitemap(fetcher, max_pages)
+        elif kind == "browser":
+            yield from self._from_browser(fetcher)
         else:
             log.warning("%s: unsupported kind %r", self.name, kind)
 
@@ -124,13 +126,29 @@ class FeedSource:
             yield "event", self._event(
                 event, event.get("uid") or f"{event['title']}-{event['start_date']}")
 
-    def _from_jsonld(self, fetcher):
-        body = fetcher.get(self.url)
+    def _from_jsonld(self, fetcher, render=False):
+        body = fetcher.get(self.url, render=render)
+        found = 0
         for obj in jsonld.extract_objects(body):
             parsed = jsonld.parse_event(obj, self.url)
             if parsed:
+                found += 1
                 yield "event", self._event(
                     parsed, f"{parsed['title']}-{parsed['start_date']}")
+        if render:
+            log.info("%s: %d event(s) in the rendered page (%d bytes)",
+                     self.name, found, len(body))
+
+    def _from_browser(self, fetcher):
+        """For a site that builds its listing client-side: render, then read.
+
+        Only structured data is taken from the rendered page — the same
+        Event JSON-LD every other source is read through. A site that
+        renders its listing but still publishes no structured data needs a
+        hand-written DOM parser, and the diagnostic
+        (inspect --browser) is what decides whether that is worth writing.
+        """
+        yield from self._from_jsonld(fetcher, render=True)
 
     def _event(self, event, source_id):
         """Normalise into the shape the pipeline stores, carrying the venue."""
