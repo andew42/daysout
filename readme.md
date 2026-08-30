@@ -65,7 +65,8 @@ result is worth knowing before adding more:
 | RHS | **Works** — five flower shows; they publish a postcode with no venue name, so the venue is created from it |
 | NGS (open gardens, garden finder) | Sitemap only. Rendering the "open this week" page doubles it (110k → 240k bytes) but it is a hub: no dates, just a link per region |
 | Historic Houses, Invitation to View | Sitemap only — WebPage/Article JSON-LD, no events |
-| Brighton Open Houses, Creative Crafts | Sitemap (and RSS) but no Event JSON-LD |
+| Creative Crafts | Sitemap but no Event JSON-LD |
+| Brighton Open Houses | Retired — an open-houses trail publishes its dates in prose on a festival page, not per house |
 | The Festival Calendar (art/food/music) | Sitemap only, no Event JSON-LD |
 | Food festival blog | BlogPosting JSON-LD; dates are prose |
 | UK Craft Fairs | No structured data; malformed HTTP headers |

@@ -91,6 +91,10 @@ func sourceTimestamp() string {
 // English Heritage — are not in the table and are the two that work. A
 // page listing only the table was a list of things that had failed.
 //
+// A source that was removed stays gone: its scrape_runs history would
+// otherwise bring it back through the union, and with no row to join to it
+// would look built in — listed for ever and impossible to remove again.
+//
 // Ordered by events contributed, so what is working is at the top.
 const sourcesQuery = `
 WITH names AS (
@@ -113,6 +117,7 @@ SELECT n.name,
        (SELECT r.message FROM scrape_runs r
           WHERE r.source = n.name ORDER BY r.id DESC LIMIT 1)
 FROM names n LEFT JOIN sources s ON s.name = n.name
+WHERE n.name NOT IN (SELECT name FROM removed_sources)
 ORDER BY 12 DESC, 13 DESC, n.name`
 
 // Sources returns every source with what it is contributing, for the UI.
@@ -289,8 +294,9 @@ func (s *Store) AddSource(rawURL, category, kind, venueName, venuePostcode strin
 // from the table on its next run, so a removal would quietly undo itself.
 // Sources written in code have no row here and cannot be removed.
 //
-// Destinations and events the source already contributed stay where they
-// are — nothing here deletes data the map is showing.
+// The events it contributed go with it: nothing refreshes them once the
+// source is gone, so they could never be corrected or aged out. Its venues
+// go too, unless another source's events are held there.
 func (s *Store) DeleteSource(name string) error {
 
 	result, err := s.DB.Exec(`DELETE FROM sources WHERE name = ?`, name)
@@ -301,6 +307,22 @@ func (s *Store) DeleteSource(name string) error {
 		return fmt.Errorf("no source named %q (sources built into the "+
 			"scraper cannot be removed)", name)
 	}
+
+	// Its events go too. Nothing refreshes them once the source is gone,
+	// so leaving them would put rows on the map that can never be
+	// corrected or aged out.
+	if _, err := s.DB.Exec(`DELETE FROM events WHERE source = ?`, name); err != nil {
+		return err
+	}
+	// Its venues go only if nothing else is using them: another source's
+	// event may sit at a venue this one created, and destinations cascade
+	// to their events, so a careless delete here would take those with it.
+	if _, err := s.DB.Exec(
+		`DELETE FROM destinations WHERE source = ?
+		   AND id NOT IN (SELECT destination_id FROM events)`, name); err != nil {
+		return err
+	}
+
 	_, err = s.DB.Exec(
 		`INSERT OR REPLACE INTO removed_sources (name, removed_at) VALUES (?, ?)`,
 		name, sourceTimestamp())

@@ -121,11 +121,21 @@ daysout/
   and are the two that work, so a page listing only the table was a list
   of failures. Built-in rows offer Update and nothing else — there is no
   row to remove.
-- **Remove is the only way to stop a source**, and it is remembered:
-  `removed_sources` exists because `seed_sources.ensure()` re-inserts any
-  candidate missing from the table, so a removal that was not recorded
-  quietly undid itself on the next run. Enable/disable was dropped from
-  the UI; the `enabled` column stays, since the scraper still uses it.
+- **Remove is the only way to stop a source**, behind a confirmation
+  dialog because it is not undoable. Three things have to happen together
+  or it does not stick: the row goes, the name is recorded in
+  `removed_sources` (`seed_sources.ensure()` re-inserts any candidate
+  missing from the table, so an unrecorded removal undoes itself), and the
+  listing excludes removed names — a source keeps its `scrape_runs`
+  history, which brought it back through the union looking `builtIn` and
+  therefore unremovable. Its events go too: nothing refreshes them once
+  the source is gone. Its venues go only if no other source's events sit
+  there, since destinations cascade to their events. Enable/disable was
+  dropped from the UI; the `enabled` column stays, since the scraper uses it.
+- **`seed_sources.RETIRED` drops a candidate for good**, deleting the row
+  and its rows from any database that still holds it. Removing a name from
+  `CANDIDATES` alone does nothing to an existing database, because
+  `ensure()` only ever inserts.
 - **A source may carry its own venue** (`venue_name`, `venue_postcode`).
   An attraction's own website rarely repeats its address on every event
   page, so without it those events have nowhere to go and are dropped —

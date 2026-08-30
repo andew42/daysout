@@ -43,6 +43,49 @@ function Contribution({ source }) {
   )
 }
 
+// Removing a source is not undoable and takes its events off the map, so
+// say which one and what goes with it before doing it.
+function ConfirmRemove({ source, onCancel, onConfirm, busy }) {
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') onCancel() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onCancel])
+
+  const contributed = source.events > 0 || source.destinations > 0
+
+  return (
+    <div className="modal-backdrop" onClick={onCancel}>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-remove-title"
+        onClick={e => e.stopPropagation()}
+      >
+        <h3 id="confirm-remove-title">Remove {source.name}?</h3>
+        <p>
+          {contributed
+            ? `Its ${source.events} event${source.events === 1 ? '' : 's'} \
+will be taken off the map. Nothing refreshes them once the source is gone, \
+so they cannot be left behind.`
+            : 'It has contributed no events, so nothing comes off the map.'}
+        </p>
+        <p className="modal-note">
+          The scraper will not add it back. You can add the site again later.
+        </p>
+        <div className="modal-actions">
+          <button type="button" onClick={onCancel} autoFocus>Cancel</button>
+          <button type="button" className="danger" disabled={busy}
+                  onClick={onConfirm}>
+            {busy ? 'Removing…' : 'Remove'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // What the scraper did, in its own words. The log matters more than the
 // verdict: it names the pages it looked at, how many events it read, and
 // the venue of any event it could not place.
@@ -70,6 +113,9 @@ export default function SourcesView() {
   const [busy, setBusy] = useState(false)
   // Which source is being updated, and the last result for each.
   const [updating, setUpdating] = useState('')
+  // The source awaiting confirmation before removal, if any.
+  const [confirming, setConfirming] = useState(null)
+  const [removing, setRemoving] = useState(false)
   const [results, setResults] = useState({})
 
   const reload = () =>
@@ -119,16 +165,29 @@ export default function SourcesView() {
 
   const remove = async source => {
     setError('')
+    setRemoving(true)
     try {
       await deleteSource(source.name)
+      setConfirming(null)
       await reload()
     } catch (e) {
       setError(e.message)
+      setConfirming(null)
+    } finally {
+      setRemoving(false)
     }
   }
 
   return (
     <div className="sources-view">
+      {confirming && (
+        <ConfirmRemove
+          source={confirming}
+          busy={removing}
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => remove(confirming)}
+        />
+      )}
       <h2>Sources</h2>
       <p className="sources-intro">
         Sites the scraper visits looking for events. Adding one here only
@@ -246,7 +305,8 @@ export default function SourcesView() {
                 </button>
                 {/* Sources written into the scraper have no row to remove. */}
                 {!source.builtIn && (
-                  <button type="button" className="danger" onClick={() => remove(source)}>
+                  <button type="button" className="danger"
+                          onClick={() => setConfirming(source)}>
                     Remove
                   </button>
                 )}

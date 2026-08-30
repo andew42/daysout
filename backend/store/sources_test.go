@@ -296,3 +296,96 @@ func TestASourceThatHasNeverRunReportsNoOutcome(t *testing.T) {
 		t.Errorf("a source never run should report no outcome, got %+v", sources[0])
 	}
 }
+
+func TestARemovedSourceStaysGone(t *testing.T) {
+
+	s := newTestStore(t)
+	added, err := s.AddSource("https://example.org/events", "music", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// It has run, so it has history — which is what brought it back.
+	seedRun(t, s, added.Name, false, "no places found", 0)
+
+	if err := s.DeleteSource(added.Name); err != nil {
+		t.Fatal(err)
+	}
+	sources, err := s.Sources()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, source := range sources {
+		if source.Name == added.Name {
+			t.Fatalf("a removed source came back through its run history, "+
+				"as builtIn=%v — listed for ever and impossible to remove again",
+				source.BuiltIn)
+		}
+	}
+}
+
+func TestRemovingASourceTakesItsEventsWithIt(t *testing.T) {
+
+	s := newTestStore(t)
+	added, err := s.AddSource("https://example.org/events", "music", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedRun(t, s, added.Name, true, "1 places, 2/2 events linked", 2)
+
+	if err := s.DeleteSource(added.Name); err != nil {
+		t.Fatal(err)
+	}
+	// Nothing refreshes them once the source is gone, so rows left behind
+	// could never be corrected or aged out.
+	var events, destinations int
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM events WHERE source = ?`,
+		added.Name).Scan(&events); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM destinations WHERE source = ?`,
+		added.Name).Scan(&destinations); err != nil {
+		t.Fatal(err)
+	}
+	if events != 0 || destinations != 0 {
+		t.Errorf("after removal: %d events and %d places left behind",
+			events, destinations)
+	}
+}
+
+func TestRemovingASourceKeepsAVenueAnotherSourceIsUsing(t *testing.T) {
+
+	s := newTestStore(t)
+	added, err := s.AddSource("https://example.org/events", "music", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedRun(t, s, added.Name, true, "1 places, 1/1 events linked", 1)
+
+	// Another source's event, held at the venue this one created.
+	var venueID int
+	if err := s.DB.QueryRow(`SELECT id FROM destinations WHERE source = ?`,
+		added.Name).Scan(&venueID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB.Exec(
+		`INSERT INTO events (destination_id, title, start_date, end_date,
+		     source, source_id, last_seen)
+		 VALUES (?, 'Someone else''s event', '2026-09-05', '2026-09-05',
+		         'other', 'x', '2026-01-01')`, venueID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.DeleteSource(added.Name); err != nil {
+		t.Fatal(err)
+	}
+	// Destinations cascade to their events, so deleting this venue would
+	// silently take the other source's event with it.
+	var survived int
+	if err := s.DB.QueryRow(
+		`SELECT COUNT(*) FROM events WHERE source = 'other'`).Scan(&survived); err != nil {
+		t.Fatal(err)
+	}
+	if survived != 1 {
+		t.Error("another source's event was destroyed by removing this one")
+	}
+}

@@ -44,10 +44,6 @@ CANDIDATES = [
     ("food-festivals-uk", "https://rosemaryandporkbelly.co.uk/food-festivals-uk/",
      "auto", "food", "Food and drink festival listing"),
 
-    # Open studios and art trails.
-    ("brighton-open-houses", "https://aoh.org.uk/",
-     "auto", "art", "Brighton Artists Open Houses"),
-
     # Gardens with their own event programmes.
     # The one listing site that does publish Event JSON-LD. Its five events
     # are read correctly but none can be placed yet: they name RHS gardens
@@ -85,7 +81,6 @@ BROWSER = [
     ("ngs-find-a-garden", "garden search is client-side; retry rendered"),
     ("historic-houses", "listing built client-side; retry rendered"),
     ("invitation-to-view", "listing built client-side; retry rendered"),
-    ("brighton-open-houses", "listing built client-side; retry rendered"),
     ("creative-crafts", "listing built client-side; retry rendered"),
     ("festival-calendar-art", "listing built client-side; retry rendered"),
     ("festival-calendar-food", "listing built client-side; retry rendered"),
@@ -100,6 +95,16 @@ BROWSER = [
 # being written off. Sources that still yield nothing after rendering belong
 # here, with the reason.
 DISABLE = []
+
+# Candidates dropped for good, removed from any database that still holds
+# them. Deleting the row from CANDIDATES alone is not enough: ensure()
+# only ever inserts, so an old row would sit in the table for ever,
+# spending requests and reporting the same failure.
+RETIRED = [
+    ("brighton-open-houses",
+     "no events after rendering: an open-houses trail publishes its dates "
+     "in prose on a festival page, not per house"),
+]
 
 def ensure(db):
     """Insert any candidate that isn't in the table yet, and apply the
@@ -125,6 +130,16 @@ def ensure(db):
         db.execute(
             "UPDATE sources SET url = ? WHERE name = ? AND url = ?",
             (right_url, name, wrong_url))
+
+    for name, reason in RETIRED:
+        db.execute("DELETE FROM sources WHERE name = ?", (name,))
+        db.execute("DELETE FROM events WHERE source = ?", (name,))
+        db.execute(
+            "DELETE FROM destinations WHERE source = ?"
+            " AND id NOT IN (SELECT destination_id FROM events)", (name,))
+        db.execute(
+            "INSERT OR REPLACE INTO removed_sources (name, removed_at)"
+            " VALUES (?, ?)", (name, dbmod.now()))
 
     for name, reason in DISABLE:
         db.execute(
