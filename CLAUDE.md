@@ -61,9 +61,17 @@ daysout/
   set `partial` and skip `purge_stale`, because a run that only looked at
   part of a source knows nothing about the rest.
 - **Diagnosing a source**: `python3 -m daysout_scraper.inspect --source X
-  --kind place|event` prints what the parser actually sees on real pages.
-  The dev sandbox can't reach these sites — the deploy workflow runs it on
-  the house server and the output lands in the run log.
+  --kind place|event` prints what the parser actually sees on real pages
+  (code sources only). For any URL, including a `sources`-table row,
+  `python3 -m daysout_scraper.discover --url U [--browser]` reports the
+  formats it publishes and then `domscan.py`'s DOM evidence: byte count,
+  `<time>` and date-classed elements, date-looking text, event-looking
+  links, embedded JSON blobs — un-rendered and rendered side by side, with
+  a verdict on whether a hand-written parser could read it. That
+  comparison is the point: "rendering changed nothing" has to be a byte
+  count in the log, not an assumption. The dev sandbox can't reach these
+  sites — the deploy workflow runs it on the house server and the output
+  lands in the run log.
 - **Browser scanner** (`browser.py`, source kind `browser`): renders a page
   in headless Chromium before reading it, for sites that assemble their
   listing client-side so the dates never reach the served HTML. Playwright

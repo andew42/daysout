@@ -23,7 +23,7 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup
 
-from . import browser, jsonld, sources
+from . import browser, domscan, jsonld, sources
 from . import fetch as fetch_module
 from .fetch import Fetcher
 from .sitemap_source import sitemap_urls
@@ -52,32 +52,14 @@ def describe(html, url):
                 print(f"    {field}: {_short(obj[field])}")
 
     soup = BeautifulSoup(html, "html.parser")
-    if not objects:
-        print("    NO JSON-LD — looking for other embedded data:")
-        for script in soup.find_all("script"):
-            script_id = script.get("id") or ""
-            script_type = script.get("type") or ""
-            if script_id or "json" in script_type:
-                print(f"      <script id={script_id!r} type={script_type!r}> "
-                      f"{len(script.string or '')} chars")
-        print(f"    title: {soup.title.string.strip()[:120] if soup.title else '(none)'}")
 
-        # Without JSON-LD the dates have to come out of the markup, so show
-        # the elements a hand-written parser would target.
-        for element in soup.find_all("time")[:6]:
-            print(f"      <time datetime={element.get('datetime')!r}> "
-                  f"{_short(element.get_text(strip=True), 60)}")
-        seen = 0
-        for element in soup.find_all(attrs={"class": True}):
-            classes = " ".join(element.get("class"))
-            if "date" in classes.lower() and seen < 6:
-                print(f"      <{element.name} class={classes[:60]!r}> "
-                      f"{_short(element.get_text(strip=True), 60)}")
-                seen += 1
-        for meta in soup.find_all("meta"):
-            name = (meta.get("property") or meta.get("name") or "").lower()
-            if "date" in name or "time" in name:
-                print(f"      <meta {name}={_short(meta.get('content') or '', 60)!r}>")
+    # No Event objects is the case that matters — a page can carry plenty of
+    # JSON-LD (breadcrumbs, an Organization) and still leave its dates in
+    # the markup only, which is exactly when a hand-written parser is worth
+    # considering. Show what one would have to work with.
+    if not any(jsonld.parse_event(o, url) for o in objects):
+        print("    no Event JSON-LD — what a DOM parser would see:")
+        print(domscan.describe(domscan.scan(html, url), indent="      "))
 
     # Coordinates are the one field a destination cannot do without; if the
     # page carries them outside JSON-LD, say where.

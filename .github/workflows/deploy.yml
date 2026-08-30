@@ -113,8 +113,26 @@ jobs:
             full|"") LIMIT="" ;;
             *) LIMIT="--max-pages $MAX_PAGES" ;;
           esac
+          # Keep the log: the next step reads it for events the pipeline
+          # could not attach to a venue, which is invisible in the counts.
           sudo env DAYSOUT_DATA=/var/lib/daysout \
-            python3 -m daysout_scraper $LIMIT --keep-seed
+            python3 -m daysout_scraper $LIMIT --keep-seed 2>&1 \
+            | sudo tee /tmp/scrape.log
+          exit "${PIPESTATUS[0]}"
+
+      - name: Events that found no venue
+        # An event whose venue matches no destination is dropped, so a
+        # source can read events all day and contribute nothing. These
+        # lines name the venues that failed to match.
+        continue-on-error: true
+        run: |
+          if [ -f /tmp/scrape.log ]; then
+            grep -c "could not place" /tmp/scrape.log \
+              | xargs -I{} echo "{} event(s) had no matching destination"
+            grep "could not place" /tmp/scrape.log | head -20 || true
+          else
+            echo "no scrape log (scrape was skipped)"
+          fi
 
       - name: Diagnose map tiles
         # The style's 71 layers reference source-layers earth/landcover/
@@ -154,13 +172,19 @@ jobs:
 
       - name: Diagnose a rendered listing page
         # What does a client-side listing actually contain once rendered?
-        # This is the evidence for whether reading it needs more than the
-        # structured data the browser scanner already looks for.
+        # Prints the un-rendered and rendered DOM side by side — dates,
+        # date-carrying elements, event links — so "a DOM parser would
+        # work here" is a conclusion from evidence rather than a guess,
+        # and "rendering changed nothing" is visible as a byte count.
         continue-on-error: true
         run: |
           cd /opt/daysout/scraper
-          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -m daysout_scraper.discover \
-            --url https://ngs.org.uk/gardens-open-this-coming-week/ --browser || true
+          for URL in https://ngs.org.uk/gardens-open-this-coming-week/ \
+                     https://www.historichouses.org/houses/whats-on/ ; do
+            sudo env DAYSOUT_DATA=/var/lib/daysout \
+              python3 -m daysout_scraper.discover --url "$URL" --browser || true
+            echo
+          done
 
       - name: Diagnose sources that found nothing
         # Prints what the pages of each source actually contain, so parser

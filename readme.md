@@ -59,6 +59,12 @@ pip install playwright && python3 -m playwright install chromium
 # or point DAYSOUT_CHROMIUM at a Chromium already on the machine
 ```
 
+Whether a site is worth a hand-written DOM parser is decided by evidence,
+not by guessing: `discover --url <page> --browser` prints the served page
+and the rendered page side by side — dates, date-carrying elements, event
+links — and says which of the two failure modes applies (the listing is
+there but unstructured, or it never reaches the page at all).
+
 Sources that yield nothing even rendered are kept as rows, disabled, with the reason in
 `notes` — so the daily scrape doesn't spend requests on them and nobody
 rediscovers the same dead ends. The common thread is that these sites build

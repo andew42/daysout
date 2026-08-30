@@ -138,8 +138,10 @@ def main():
             with browser.Renderer(USER_AGENT) as renderer:
                 fetcher.renderer = renderer
                 print(describe(probe(fetcher, args.url, render=True)))
+                inspect_dom(fetcher, args.url, rendered=True)
             return
         print(describe(probe(fetcher, args.url)))
+        inspect_dom(fetcher, args.url)
         return
 
     added = seed_sources.ensure(db)
@@ -169,6 +171,43 @@ def main():
             print(f"  (disabled {name})\n")
     db.commit()
     print(f"{usable}/{len(rows)} source(s) publish something machine-readable")
+
+
+def inspect_dom(fetcher, url, rendered=False):
+    """Print what a hand-written parser would have to work with.
+
+    A source that publishes no Event JSON-LD is not automatically a dead
+    end — the dates may still be in the markup. Print the evidence, and
+    when the page was rendered print the un-rendered page beside it, so
+    "rendering made no difference" is something the log shows rather than
+    something we assume. Both fetches come from the cache the probe just
+    filled.
+    """
+
+    from . import domscan
+
+    try:
+        plain = domscan.scan(fetcher.get(url), url)
+    except Exception as e:  # noqa: BLE001 — a diagnostic never fails the caller
+        print(f"    DOM scan failed: {e}")
+        return
+
+    print("    --- DOM as served")
+    print(domscan.describe(plain, indent="      "))
+
+    rendered_report = None
+    if rendered:
+        try:
+            rendered_report = domscan.scan(fetcher.get(url, render=True), url)
+        except Exception as e:  # noqa: BLE001
+            print(f"    rendered DOM scan failed: {e}")
+        else:
+            print("    --- DOM after rendering")
+            print(domscan.describe(rendered_report, indent="      "))
+            change = rendered_report["bytes"] - plain["bytes"]
+            print(f"      rendering changed the page by {change:+d} bytes")
+
+    print(f"    VERDICT: {domscan.verdict(plain, rendered_report)}")
 
 
 def describe(report):

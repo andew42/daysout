@@ -14,7 +14,7 @@ sorting work for sites we have never seen before.
 import logging
 import re
 
-from .. import discover, ical, jsonld
+from .. import discover, domscan, ical, jsonld
 from ..sitemap_source import sitemap_urls
 
 log = logging.getLogger(__name__)
@@ -27,10 +27,9 @@ DEFAULT_SITEMAP_PAGES = 50
 
 # The newest pages on a site are often blog posts and news, not events, so
 # prefer paths that look like an event before falling back on recency.
-EVENT_URL_HINT_RE = re.compile(
-    r"/(events?|whats-on|what-s-on|fairs?|festivals?|shows?|exhibitions?|"
-    r"open-gardens?|find-a-garden|gardens?-open|open-days?|visit)\b",
-    re.IGNORECASE)
+# Shared with the DOM diagnostic, which asks the same question of a page's
+# own links.
+EVENT_URL_HINT_RE = domscan.EVENT_URL_HINT_RE
 
 # "Bolsover Castle, Castle Street, Bolsover, S44 6PR" -> S44 6PR
 POSTCODE_RE = re.compile(
