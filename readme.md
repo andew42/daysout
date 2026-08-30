@@ -20,14 +20,17 @@ and English Heritage properties, gardens, aviation museums); English
 Heritage's own site is crawled via its sitemap for schema.org JSON-LD.
 Both feed the same destinations and events tables.
 
-National Trust contributes **events** — each property publishes an events
-page (`/visit/<region>/<property>/events`) that robots.txt permits — while
-its properties keep coming from Wikidata. That site has answered automated
-clients with a bot-protection challenge before, so the source watches for
-one and stops the run when it sees it. Working around a challenge (a
-disguised User-Agent, solving it, rotating identities) would be
-circumventing an access control the owner put there on purpose, and is not
-something this scraper does.
+National Trust would contribute **events** — each property publishes an
+events page (`/visit/<region>/<property>/events`) — and the scraper knows
+how to read them. It cannot: measured on real hardware, robots.txt allows
+those pages and the site still answers with a 118 KB Radware
+bot-protection challenge carrying no data. So the source probes one page
+before crawling anything, records that it was refused, and stops. Working
+around a challenge (a disguised User-Agent, solving it, rotating
+identities) would circumvent an access control the owner put there on
+purpose, and is not something this scraper does. If the site ever serves
+those pages, the source starts working with no further changes; National
+Trust properties reach the map from Wikidata in the meantime.
 
 ### Which event sources actually work
 
@@ -43,7 +46,7 @@ result is worth knowing before adding more:
 | Source | Result |
 |--------|--------|
 | English Heritage | **Works** — 392 properties, ~119 events, Event JSON-LD per page |
-| National Trust | Events only, one listing page per property; stops if the site answers with a challenge |
+| National Trust | robots.txt permits `/visit/**`, but the site answers with a 118 KB bot-protection challenge (measured 30 Aug 2026) — the source probes once and stops |
 | RHS | **Works** — five flower shows; they publish a postcode with no venue name, so the venue is created from it |
 | NGS (open gardens, garden finder) | Sitemap only. Rendering the "open this week" page doubles it (110k → 240k bytes) but it is a hub: no dates, just a link per region |
 | Historic Houses, Invitation to View | Sitemap only — WebPage/Article JSON-LD, no events |

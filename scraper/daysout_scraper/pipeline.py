@@ -70,7 +70,13 @@ def run_source(db, fetcher, source, max_pages=0):
         # or the URL patterns no longer match — never a genuinely empty
         # source. Purging on that would wipe good data on a network blip.
         elif places == 0:
-            message = ("no places found (source unreachable, blocked, or its "
+            # A source that knows why it found nothing says so: "no places
+            # found" alone cannot tell a site refusing us apart from URL
+            # patterns that no longer match, and confusing the two has
+            # cost real time.
+            note = getattr(source, "failure_note", "")
+            message = (f"nothing found — {note}; nothing purged" if note else
+                       "no places found (source unreachable, blocked, or its "
                        "patterns/queries are wrong); nothing purged")
             log.warning("%s: %s", source.name, message)
             dbmod.finish_run(db, run_id, ok=False, message=message)

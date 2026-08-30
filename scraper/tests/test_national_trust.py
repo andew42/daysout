@@ -163,6 +163,30 @@ class TestRefusal(unittest.TestCase):
         pages = [u for u in f.fetched if u != f"{BASE}/sitemap.xml"]
         self.assertEqual(len(pages), 1, pages)
 
+    def test_the_canary_stops_us_before_crawling_the_sitemap(self):
+        # A refusal should cost one request, not a crawl of every URL the
+        # sitemap lists.
+        f = fetcher(index=CHALLENGE_PAGE, event=CHALLENGE_PAGE)
+        f.pages[NationalTrust.CANARY] = CHALLENGE_PAGE
+        run_source(self.db, f, NationalTrust())
+        self.assertEqual(f.fetched, [NationalTrust.CANARY])
+
+    def test_the_run_says_it_was_refused_rather_than_empty(self):
+        f = fetcher(index=CHALLENGE_PAGE, event=CHALLENGE_PAGE)
+        f.pages[NationalTrust.CANARY] = CHALLENGE_PAGE
+        _, message = run_source(self.db, f, NationalTrust())
+        self.assertIn("bot-protection challenge", message)
+
+    def test_a_missing_canary_does_not_disable_the_source(self):
+        # The canary is a probe. If that one page 404s, the crawl must
+        # still happen rather than the source quietly switching itself off.
+        f = fetcher()  # no CANARY page: fetching it raises KeyError
+        ok, message = run_source(self.db, f, NationalTrust())
+        self.assertTrue(ok, message)
+        # The sitemap and the pages it lists were still visited.
+        self.assertIn(f"{BASE}/sitemap.xml", f.fetched)
+        self.assertIn(INDEX, f.fetched)
+
     def test_a_blocked_run_purges_nothing(self):
         run_source(self.db, fetcher(), NationalTrust())
         self.db.execute(

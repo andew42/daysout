@@ -62,8 +62,15 @@ daysout/
   the engine visits places before events, so crawling them would spend the
   run's first requests on the pages most likely to be challenged before
   reaching any event. `looks_like_a_challenge()` detects a bot-protection
-  interstitial and sets `blocked`, which stops the run after one page. We
-  still never work around a challenge — no disguised User-Agent, no
+  interstitial and sets `blocked`. A canary request runs before the
+  sitemap so a refusal costs one request, and `failure_note` makes the run
+  say it was refused rather than "no places found", which cannot tell a
+  refusal apart from stale URL patterns. **Measured 30 Aug 2026 on the
+  house server: robots.txt allows the events pages and the site still
+  returns a 118,419-byte challenge with no JSON-LD.** So this source
+  currently contributes nothing, by the site's choice, and is kept because
+  it will work unchanged if that ever stops. We still never work around a
+  challenge — no disguised User-Agent, no
   solving it, no rotating identities; the point of detecting it is to stop
   and say so rather than collect hundreds of refusals and report an empty
   site. NT event ids are `<property>-<title>-<start date>` so an event

@@ -18,13 +18,18 @@ are what this source goes for.
 
 ## On being blocked
 
-This site has served a Radware bot-protection challenge to automated
-clients — a ~118 KB page with no content in place of the real HTML. That
-is a refusal, and we do not work around it: no disguised User-Agent, no
-solving the challenge, no rotating identities. What this module does
-instead is *notice*: the first challenge response stops the run with a
-message saying so, rather than spending hundreds of requests collecting
-challenge pages and reporting them as an empty site.
+Measured on the house server, 30 August 2026, against the events page
+above: robots.txt **allows** it (nothing under /visit is disallowed), and
+the site still answers with a 118,419-byte Radware bot-protection
+challenge carrying no JSON-LD at all. So neither robots.txt nor the URL
+shape is what stops us — the site declines to serve automated clients.
+
+We do not work around that: no disguised User-Agent, no solving the
+challenge, no rotating identities. What this module does instead is
+*notice*. A single canary request runs before the sitemap, so a refusal
+costs one request rather than a 1,279-entry crawl, and the run says it
+was refused instead of reporting an empty site. If the site ever serves
+these pages, this source starts working with no further changes.
 
 Crawling is otherwise ordinary and polite — robots.txt is consulted for
 every URL by the fetcher, so any path the site disallows is skipped
@@ -77,10 +82,20 @@ class NationalTrust(SitemapJsonLdSource):
     name = "national_trust"
     sitemaps = ("https://www.nationaltrust.org.uk/sitemap.xml",)
 
+    # Probed before the sitemap to find out cheaply whether the site is
+    # serving us at all. If it stops existing the crawl still proceeds —
+    # a dead canary must not silently disable the source.
+    CANARY = ("https://www.nationaltrust.org.uk/visit/"
+              "oxfordshire-buckinghamshire-berkshire/stowe-gardens/events")
+
     def __init__(self):
         # Set when the site answers with a challenge, so the rest of the
         # run stops asking instead of collecting hundreds of refusals.
         self.blocked = False
+        # Read by the pipeline for the run message: "no places found" alone
+        # cannot tell a refusal apart from patterns that no longer match,
+        # and that ambiguity has cost time before.
+        self.failure_note = ""
 
     def classify(self, url):
         # Properties come from Wikidata; see the module docstring. Returning
@@ -117,6 +132,9 @@ class NationalTrust(SitemapJsonLdSource):
         is the same row wherever it was read.
         """
 
+        if self._refused(fetcher):
+            return
+
         for kind, item in super().scrape(fetcher, max_pages=max_pages):
             if kind == "event":
                 slug = self.property_slug(item.get("page_url", ""))
@@ -124,6 +142,31 @@ class NationalTrust(SitemapJsonLdSource):
                                item.get("title", "").lower()).strip("-")
                 item["source_id"] = f"{slug}-{title}-{item['start_date']}"[:200]
             yield kind, item
+
+    def _refused(self, fetcher):
+        """One request, before the sitemap: is the site serving us today?"""
+
+        try:
+            body = fetcher.get(self.CANARY)
+        except Exception as e:  # noqa: BLE001 — the canary is a probe, not a gate
+            log.info("%s: canary %s did not load (%s); crawling anyway",
+                     self.name, self.CANARY, e)
+            return False
+        if looks_like_a_challenge(body):
+            self._record_refusal(self.CANARY, body)
+            return True
+        return False
+
+    def _record_refusal(self, url, body):
+        self.blocked = True
+        self.failure_note = ("the site answered with a bot-protection "
+                             "challenge; robots.txt permits these pages, but "
+                             "we don't work around a refusal")
+        log.warning(
+            "%s: %s answered with a bot-protection challenge (%d bytes) "
+            "instead of the page — stopping. That is the site refusing "
+            "automated clients, and we don't work around it.",
+            self.name, url, len(body))
 
     def _objects(self, fetcher, url):
         """Fetch a page, unless the site has already told us no."""
@@ -137,12 +180,7 @@ class NationalTrust(SitemapJsonLdSource):
             return []
 
         if looks_like_a_challenge(body):
-            self.blocked = True
-            log.warning(
-                "%s: %s answered with a bot-protection challenge (%d bytes) "
-                "instead of the page — stopping. That is the site refusing "
-                "automated clients, and we don't work around it.",
-                self.name, url, len(body))
+            self._record_refusal(url, body)
             return []
 
         return jsonld.extract_objects(body)
