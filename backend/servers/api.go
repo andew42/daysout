@@ -168,10 +168,9 @@ func TilesHandler(dataDir string) http.HandlerFunc {
 
 // SourcesHandler /api/sources — the sites the scraper visits.
 //
-//	GET    lists them, with the verdict the scraper recorded for each
-//	POST   {"url":…, "category":…, "kind":…} adds one
-//	PATCH  {"name":…, "enabled":bool} turns one on or off
-//	DELETE ?name=… removes one added here
+//	GET    lists them, with what each is contributing
+//	POST   {"url":…, "category":…, "kind":…, "venuePostcode":…} adds one
+//	DELETE ?name=… removes one, and remembers that it was removed
 //
 // Adding a source only writes a row: the server itself never fetches
 // anything, so the site is visited by the scraper on its next run.
@@ -192,15 +191,18 @@ func SourcesHandler(s *store.Store) http.HandlerFunc {
 
 		case http.MethodPost:
 			var body struct {
-				URL      string `json:"url"`
-				Category string `json:"category"`
-				Kind     string `json:"kind"`
+				URL           string `json:"url"`
+				Category      string `json:"category"`
+				Kind          string `json:"kind"`
+				VenueName     string `json:"venueName"`
+				VenuePostcode string `json:"venuePostcode"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				writeError(w, http.StatusBadRequest, "expected a JSON body")
 				return
 			}
-			source, err := s.AddSource(body.URL, body.Category, body.Kind)
+			source, err := s.AddSource(body.URL, body.Category, body.Kind,
+				body.VenueName, body.VenuePostcode)
 			if err != nil {
 				// Everything AddSource rejects is something the person
 				// typed, so it is a 400 with the reason they need to read.
@@ -209,21 +211,6 @@ func SourcesHandler(s *store.Store) http.HandlerFunc {
 			}
 			slog.Info("source added", "name", source.Name, "url", source.URL)
 			writeJSON(w, http.StatusCreated, source)
-
-		case http.MethodPatch:
-			var body struct {
-				Name    string `json:"name"`
-				Enabled bool   `json:"enabled"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				writeError(w, http.StatusBadRequest, "expected a JSON body")
-				return
-			}
-			if err := s.SetSourceEnabled(body.Name, body.Enabled); err != nil {
-				writeError(w, http.StatusBadRequest, err.Error())
-				return
-			}
-			writeJSON(w, http.StatusOK, map[string]any{"name": body.Name, "enabled": body.Enabled})
 
 		case http.MethodDelete:
 			name := r.URL.Query().Get("name")
@@ -234,7 +221,7 @@ func SourcesHandler(s *store.Store) http.HandlerFunc {
 			writeJSON(w, http.StatusOK, map[string]any{"deleted": name})
 
 		default:
-			w.Header().Set("Allow", "GET, POST, PATCH, DELETE")
+			w.Header().Set("Allow", "GET, POST, DELETE")
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		}
 	}

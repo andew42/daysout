@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { addSource, deleteSource, fetchSources, setSourceEnabled, testSource } from './api.jsx'
+import { addSource, deleteSource, fetchSources, updateSource } from './api.jsx'
 import { ALL_CATEGORIES } from './settings.jsx'
 
 // What each extractor does, in the terms someone adding a site can judge.
@@ -62,12 +62,14 @@ function TestResult({ result }) {
 export default function SourcesView() {
   const [sources, setSources] = useState(null)
   const [kinds, setKinds] = useState(['auto'])
-  const [form, setForm] = useState({ url: '', category: 'venue', kind: 'auto' })
+  const [form, setForm] = useState({
+    url: '', category: 'venue', kind: 'auto', venueName: '', venuePostcode: '',
+  })
   const [error, setError] = useState('')
   const [added, setAdded] = useState('')
   const [busy, setBusy] = useState(false)
-  // Which source is being tested, and the last result for each.
-  const [testing, setTesting] = useState('')
+  // Which source is being updated, and the last result for each.
+  const [updating, setUpdating] = useState('')
   const [results, setResults] = useState({})
 
   const reload = () =>
@@ -82,7 +84,7 @@ export default function SourcesView() {
     reload()
   }, [])
 
-  const update = patch => setForm(f => ({ ...f, ...patch }))
+  const setField = patch => setForm(f => ({ ...f, ...patch }))
 
   const submit = async event => {
     event.preventDefault()
@@ -92,7 +94,7 @@ export default function SourcesView() {
     try {
       const source = await addSource(form)
       setAdded(source.name)
-      setForm({ ...form, url: '' })
+      setForm({ ...form, url: '', venueName: '', venuePostcode: '' })
       await reload()
     } catch (e) {
       setError(e.message)
@@ -101,27 +103,17 @@ export default function SourcesView() {
     }
   }
 
-  const toggle = async source => {
+  const update = async source => {
     setError('')
+    setUpdating(source.name)
     try {
-      await setSourceEnabled(source.name, !source.enabled)
-      await reload()
-    } catch (e) {
-      setError(e.message)
-    }
-  }
-
-  const test = async source => {
-    setError('')
-    setTesting(source.name)
-    try {
-      const result = await testSource(source.name)
+      const result = await updateSource(source.name)
       setResults(r => ({ ...r, [source.name]: result }))
       await reload()
     } catch (e) {
       setResults(r => ({ ...r, [source.name]: { ok: false, message: e.message } }))
     } finally {
-      setTesting('')
+      setUpdating('')
     }
   }
 
@@ -142,10 +134,9 @@ export default function SourcesView() {
         Sites the scraper visits looking for events. Adding one here only
         writes it down — this server never fetches anything itself. The
         scraper visits it on its next run (daily, 05:30) — or press
-        <strong> Test now</strong> to run that one site immediately and see
-        what came back. A test samples the site rather than crawling it, so
-        it can add events but never remove any, and it can take a minute:
-        the scraper stays at one polite request per second.
+        <strong> Update</strong> to crawl that one site now and see what came
+        back. An update is a full crawl, so it can take a few minutes on a
+        large site: the scraper stays at one polite request per second.
       </p>
 
       <form className="settings-view" onSubmit={submit}>
@@ -154,7 +145,7 @@ export default function SourcesView() {
           <input
             type="text"
             value={form.url}
-            onChange={e => update({ url: e.target.value })}
+            onChange={e => setField({ url: e.target.value })}
             placeholder="e.g. ngs.org.uk/find-a-garden"
             autoFocus
           />
@@ -162,7 +153,7 @@ export default function SourcesView() {
 
         <label>
           Category for its events
-          <select value={form.category} onChange={e => update({ category: e.target.value })}>
+          <select value={form.category} onChange={e => setField({ category: e.target.value })}>
             {ALL_CATEGORIES.map(category => (
               <option key={category.id} value={category.id}>{category.label}</option>
             ))}
@@ -171,11 +162,32 @@ export default function SourcesView() {
 
         <label>
           How to read it
-          <select value={form.kind} onChange={e => update({ kind: e.target.value })}>
+          <select value={form.kind} onChange={e => setField({ kind: e.target.value })}>
             {kinds.map(kind => (
               <option key={kind} value={kind}>{KIND_LABELS[kind] || kind}</option>
             ))}
           </select>
+        </label>
+
+        <label>
+          Venue postcode <span className="hint">optional — for a site that
+          is one place, whose event pages never repeat the address</span>
+          <input
+            type="text"
+            value={form.venuePostcode}
+            onChange={e => setField({ venuePostcode: e.target.value })}
+            placeholder="e.g. SG18 9EP"
+          />
+        </label>
+
+        <label>
+          Venue name <span className="hint">optional</span>
+          <input
+            type="text"
+            value={form.venueName}
+            onChange={e => setField({ venueName: e.target.value })}
+            placeholder="e.g. Shuttleworth"
+          />
         </label>
 
         <button type="submit" disabled={busy || !form.url.trim()}>
@@ -186,7 +198,7 @@ export default function SourcesView() {
       {error && <p className="notice error">{error}</p>}
       {added && (
         <p className="notice">
-          Added as <strong>{added}</strong>. Press <strong>Test now</strong>
+          Added as <strong>{added}</strong>. Press <strong>Update</strong>
           on it below to see straight away whether it publishes anything
           usable; otherwise the next scrape will pick it up.
         </p>
@@ -227,19 +239,13 @@ export default function SourcesView() {
               <div className="source-actions">
                 <button
                   type="button"
-                  onClick={() => test(source)}
-                  disabled={testing !== ''}
+                  onClick={() => update(source)}
+                  disabled={updating !== ''}
                 >
-                  {testing === source.name ? 'Testing…' : 'Test now'}
+                  {updating === source.name ? 'Updating…' : 'Update'}
                 </button>
+                {/* Sources written into the scraper have no row to remove. */}
                 {!source.builtIn && (
-                  <button type="button" onClick={() => toggle(source)}>
-                    {source.enabled ? 'Disable' : 'Enable'}
-                  </button>
-                )}
-                {/* Built-in candidates are re-added by the scraper if
-                    deleted, so only sites added here offer Remove. */}
-                {source.userAdded && (
                   <button type="button" className="danger" onClick={() => remove(source)}>
                     Remove
                   </button>

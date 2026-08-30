@@ -8,7 +8,8 @@ turns out to publish nothing usable stays in the table, disabled, so the
 next person does not waste time rediscovering that.
 
 Rows are inserted if absent and never overwritten, so anything you add or
-disable by hand survives an upgrade.
+disable by hand survives an upgrade — and a source removed through the web
+UI is recorded in removed_sources and never seeded again.
 """
 
 from .. import db as dbmod
@@ -104,8 +105,15 @@ def ensure(db):
     """Insert any candidate that isn't in the table yet, and apply the
     corrections learned from running discovery against the real sites."""
 
+    # A source removed through the web UI stays removed: re-inserting it
+    # here would quietly undo the removal on the next run, which is worse
+    # than not offering to remove it at all.
+    removed = {row[0] for row in db.execute("SELECT name FROM removed_sources")}
+
     added = 0
     for name, url, kind, category, notes in CANDIDATES:
+        if name in removed:
+            continue
         cursor = db.execute(
             """INSERT OR IGNORE INTO sources
                  (name, url, kind, category, enabled, notes, added)

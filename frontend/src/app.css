@@ -203,7 +203,18 @@ body {
    wanting is the point of keeping the row. */
 .source.disabled { opacity: 0.55; }
 .source-main { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.source-main strong { font-size: 0.95rem; }
+/* Name and contribution pill on one line that wraps, rather than a long
+   name pushing the pill under the action buttons. Direct child only: the
+   pill has its own <strong> inside it, and making that a flex container
+   too broke the pill onto two lines. */
+.source-main > strong {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
 .source-main a,
 .source-meta,
 .source-notes {
@@ -250,7 +261,9 @@ body {
 
 /* What a source is contributing, next to its name. */
 .contribution {
-  margin-left: 8px;
+  /* A flex item beside the name: it must not be squeezed until it wraps
+     inside itself ("116 events" above "· 1 place"). */
+  flex-shrink: 0;
   padding: 1px 7px;
   border-radius: 10px;
   font-size: 0.75rem;
@@ -263,3 +276,12 @@ body {
 .contribution strong { font-weight: 700; }
 .source-run { font-size: 0.8rem; color: var(--accent); }
 .source-run.bad { color: #a03024; }
+
+/* A note on what an optional field is for, beside its label. */
+.hint { font-weight: 400; font-size: 0.78rem; color: var(--muted); }
+.sources-view input[type="text"] {
+  padding: 8px 10px;
+  font-size: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}

@@ -13,12 +13,13 @@ sorting work for sites we have never seen before.
 
 import json
 import logging
+import re
 from datetime import date
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
-from .. import discover, domscan, ical, jsonld, postcode
+from .. import discover, domscan, ical, jsonld, postcode, slugdate
 from ..sitemap_source import sitemap_urls
 
 log = logging.getLogger(__name__)
@@ -63,8 +64,9 @@ class FeedSource:
     """Runs one row of the sources table."""
 
     def __init__(self, row):
-        # row: (id, name, url, kind, category)
-        self.source_id, self.name, self.url, self.kind, self.category = row
+        # row: (id, name, url, kind, category, venue_name, venue_postcode)
+        (self.source_id, self.name, self.url, self.kind, self.category,
+         self.venue_name, self.venue_postcode) = (tuple(row) + ("", ""))[:7]
         self.sitemap = ""
 
     # The pipeline treats every source the same way.
@@ -95,6 +97,15 @@ class FeedSource:
             log.info("%s: found a WordPress events API", self.name)
             return "wpevents"
 
+        # The URL may itself be a sitemap — someone pasting
+        # ".../sitemap.xml" means "crawl this", and probing it as a web
+        # page finds nothing, which looked like the site publishing
+        # nothing at all.
+        if self._is_a_sitemap(fetcher, self.url):
+            self.sitemap = self.url
+            log.info("%s: the URL is a sitemap; crawling it", self.name)
+            return "sitemap"
+
         report = discover.probe(fetcher, self.url)
         if "ical" in report["formats"]:
             return "ical"
@@ -109,6 +120,13 @@ class FeedSource:
             return "sitemap"
         return None
 
+    def _is_a_sitemap(self, fetcher, url):
+        try:
+            head = fetcher.get(url).lstrip()[:400].lower()
+        except Exception:  # noqa: BLE001 — unreachable is not "a sitemap"
+            return False
+        return "<urlset" in head or "<sitemapindex" in head
+
     def _from_sitemap(self, fetcher, max_pages):
         sitemap = self.sitemap or self.url
         limit = max_pages or DEFAULT_SITEMAP_PAGES
@@ -122,20 +140,52 @@ class FeedSource:
         log.info("%s: scanning %d %s page(s) of %d in %s",
                  self.name, len(pages), why, len(all_pages), sitemap)
 
-        found = 0
+        found = dated = 0
         for _, url in pages:
             try:
                 body = fetcher.get(url)
             except Exception as e:  # noqa: BLE001 — one bad page, keep going
                 log.debug("%s: %s failed: %s", self.name, url, e)
                 continue
+
+            structured = False
             for obj in jsonld.extract_objects(body):
                 parsed = jsonld.parse_event(obj, url)
                 if parsed:
+                    structured = True
                     found += 1
                     yield "event", self._event(
                         parsed, f"{parsed['title']}-{parsed['start_date']}")
-        log.info("%s: %d event(s) in those pages", self.name, found)
+            if structured:
+                continue
+
+            # No structured data, but the site may have put the date in
+            # the address — which is the most reliable thing about a page
+            # that publishes nothing else.
+            event = self._event_from_url(url, body)
+            if event:
+                dated += 1
+                yield "event", event
+
+        log.info("%s: %d event(s) from structured data and %d from dated URLs "
+                 "in those pages", self.name, found, dated)
+
+    def _event_from_url(self, url, body):
+        """An event whose dates come from its URL, or None."""
+
+        dates = slugdate.parse(url)
+        if not dates:
+            return None
+        start, end = dates
+        return self._event({
+            "title": _page_title(body) or slugdate.title_from(url),
+            "description": "",
+            "url": url,
+            "start_date": start,
+            "end_date": end,
+            "location_name": "",
+            "location_postcode": postcode.find(body[:20000]),
+        }, f"{start}-{slugdate.title_from(url)}")
 
     def _from_ical(self, fetcher, max_pages):
         text = fetcher.get(self.url)
@@ -252,10 +302,16 @@ class FeedSource:
             # The venue as published: a name, plus its postcode — from the
             # structured address where the site provides one, otherwise
             # found in the location or description text.
-            "location_name": venue.split(",")[0].strip(),
-            "venue_full": venue,
+            # A site that is one venue rarely repeats its address on every
+            # event page, so fall back to the venue recorded against the
+            # source. Without somewhere to put them those events are
+            # dropped, which is most of what an attraction's own site
+            # publishes.
+            "location_name": venue.split(",")[0].strip() or self.venue_name,
+            "venue_full": venue or self.venue_name,
             "venue_postcode": (event.get("location_postcode")
-                               or find_postcode(venue, event.get("description", ""))),
+                               or find_postcode(venue, event.get("description", ""))
+                               or self.venue_postcode),
         }
 
     def link_event(self, event):
@@ -265,6 +321,19 @@ class FeedSource:
 def load_enabled(db):
     """FeedSource for every enabled row in the sources table."""
     rows = db.execute(
-        "SELECT id, name, url, kind, category FROM sources "
-        "WHERE enabled = 1 ORDER BY name").fetchall()
+        "SELECT id, name, url, kind, category, venue_name, venue_postcode "
+        "FROM sources WHERE enabled = 1 ORDER BY name").fetchall()
     return [FeedSource(row) for row in rows]
+
+
+def _page_title(body):
+    """The page's own heading, which beats a slug when there is one."""
+    soup = BeautifulSoup(body, "html.parser")
+    heading = soup.find("h1")
+    if heading and heading.get_text(strip=True):
+        return " ".join(heading.get_text(" ", strip=True).split())[:160]
+    if soup.title and soup.title.string:
+        # "Evening Airshow | Shuttleworth" — the site name is not the event.
+        text = soup.title.string.strip()
+        return re.split(r"\s+[|\u2013-]\s+", text)[0][:160]
+    return ""

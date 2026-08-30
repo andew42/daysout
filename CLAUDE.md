@@ -119,15 +119,34 @@ daysout/
   (`builtIn`), found by taking the union of the table with whatever has
   run or produced rows: Wikidata and English Heritage are not in the table
   and are the two that work, so a page listing only the table was a list
-  of failures. Built-in rows offer Test now and nothing else — there is no
-  row to enable, disable or delete.
-- Adding a source only writes the row. **Test now**
-  (`POST /api/sources/test`, `backend/servers/scrapetest.go`) is the one
-  place the server reaches the internet, and it does it the only way
+  of failures. Built-in rows offer Update and nothing else — there is no
+  row to remove.
+- **Remove is the only way to stop a source**, and it is remembered:
+  `removed_sources` exists because `seed_sources.ensure()` re-inserts any
+  candidate missing from the table, so a removal that was not recorded
+  quietly undid itself on the next run. Enable/disable was dropped from
+  the UI; the `enabled` column stays, since the scraper still uses it.
+- **A source may carry its own venue** (`venue_name`, `venue_postcode`).
+  An attraction's own website rarely repeats its address on every event
+  page, so without it those events have nowhere to go and are dropped —
+  which is most of what a single-venue site publishes.
+- **`slugdate.py` reads dates out of a URL** — "evening-airshow-15-september-2026"
+  — for pages that publish no structured data at all. The sitemap crawl
+  falls back to it when a page has no Event JSON-LD, taking the title from
+  the page's `<h1>`. A slug with no year is dated by the next occurrence,
+  with 45 days of slack backwards so an event three weeks past is not
+  pushed a year out. `_detect` also recognises when the source URL *is* a
+  sitemap: someone pasting ".../sitemap.xml" means "crawl this", and
+  probing it as a web page found nothing, which read as the site
+  publishing nothing at all.
+- Adding a source only writes the row. **Update**
+  (`POST /api/sources/update`, `backend/servers/sourceupdate.go`) is the
+  one place the server reaches the internet, and it does it the only way
   anything here does — by running `python3 -m daysout_scraper --sources
-  <name> --max-pages 10`, then reporting the scrape_runs verdict and the
-  scraper's own log. Bounded, so the pipeline marks it a partial run and
-  never purges: a test can add rows, never remove any. Guards: the name
+  <name>`, then reporting the scrape_runs verdict and the scraper's own
+  log. A full crawl, because the point of pressing Update is to have this
+  source's events be right, which means letting the pipeline purge what
+  has gone; ten-minute timeout. Guards: the name
   must match `safeSourceName` *and* exist in the table (a name starting
   with `-` would be read as a flag), one test at a time behind a mutex so
   a double-click can't send two crawls at one site, and a 3-minute

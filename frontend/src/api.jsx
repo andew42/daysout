@@ -55,12 +55,9 @@ export function fetchSources() {
 // Adds a site for the scraper to visit on its next run. The server only
 // records the row — nothing is fetched at this point, so a site that turns
 // out to publish nothing usable is reported later, in its lastStatus.
-export function addSource({ url, category, kind }) {
-  return sendJSON('/api/sources', 'POST', { url, category, kind })
-}
-
-export function setSourceEnabled(name, enabled) {
-  return sendJSON('/api/sources', 'PATCH', { name, enabled })
+export function addSource({ url, category, kind, venueName, venuePostcode }) {
+  return sendJSON('/api/sources', 'POST',
+    { url, category, kind, venueName, venuePostcode })
 }
 
 export function deleteSource(name) {
@@ -68,9 +65,9 @@ export function deleteSource(name) {
 }
 
 // Runs the scraper for one source now, instead of waiting for the daily
-// timer, and returns what it did. Bounded: it samples the site rather than
-// crawling it, so it can add rows but never purge any. Can take a minute —
-// the scraper stays at one request per second.
-export function testSource(name) {
-  return sendJSON('/api/sources/test', 'POST', { name })
+// timer, and returns what it did. A full crawl, so this source's events
+// end up right — which at one polite request per second can take minutes
+// on a large site.
+export function updateSource(name) {
+  return sendJSON('/api/sources/update', 'POST', { name })
 }

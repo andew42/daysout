@@ -13,6 +13,8 @@ import (
 // databases created before it.
 var addedColumns = []struct{ table, column, definition string }{
 	{"events", "category", "TEXT NOT NULL DEFAULT ''"},
+	{"sources", "venue_name", "TEXT NOT NULL DEFAULT ''"},
+	{"sources", "venue_postcode", "TEXT NOT NULL DEFAULT ''"},
 }
 
 func migrate(db *sql.DB) error {

@@ -18,20 +18,19 @@ import (
 	"github.com/andew42/daysout/store"
 )
 
-// Testing a source is the one thing the server does that reaches the
+// Updating a source is the one thing the server does that reaches the
 // internet, and it does so the only way anything here ever does: by
 // running the scraper. Adding a site and then waiting until 05:30 to find
 // out whether it publishes anything usable made the Sources tab a
 // suggestion box, so this runs that one source now and reports back.
 //
-// The run is deliberately bounded (--max-pages), which the pipeline treats
-// as a partial run: it looks at a sample of the site and is never allowed
-// to purge rows it did not check. A test can therefore add data but never
-// remove any.
+// It is a full run, not a sample: the point of pressing Update is to have
+// this source's events be right, which means visiting the whole site and
+// letting the pipeline purge what has gone. A full crawl of a large site
+// at one polite request per second takes minutes, hence the timeout.
 const (
-	testPageLimit  = "10"
-	testTimeout    = 3 * time.Minute
-	testOutputTail = 8000 // bytes of scraper log returned to the browser
+	updateTimeout    = 10 * time.Minute
+	updateOutputTail = 8000 // bytes of scraper log returned to the browser
 )
 
 // Source names are ours (derived from the URL) but the table can also be
@@ -39,10 +38,10 @@ const (
 // starting with "-" would be read as a flag.
 var safeSourceName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 
-// One test at a time. Without this, an impatient double-click would send
+// One update at a time. Without this, an impatient double-click would send
 // two crawls at the same site at once, which is exactly the rudeness the
 // rate limiter exists to prevent.
-var testRunning sync.Mutex
+var updateRunning sync.Mutex
 
 // scraperDir is where `python3 -m daysout_scraper` can be run.
 func scraperDir() string {
@@ -56,13 +55,13 @@ func scraperDir() string {
 	return "scraper"
 }
 
-// TestSourceHandler POST /api/sources/test {"name": …}
+// UpdateSourceHandler POST /api/sources/update {"name": …}
 //
 // Runs the scraper for one source and returns what it did, including the
 // scraper's own log — which says far more than a row count: which pages it
 // looked at, how many events it read, and the venue of any event it could
 // not place.
-func TestSourceHandler(s *store.Store, dataDir string) http.HandlerFunc {
+func UpdateSourceHandler(s *store.Store, dataDir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		if r.Method != http.MethodPost {
@@ -103,12 +102,12 @@ func TestSourceHandler(s *store.Store, dataDir string) http.HandlerFunc {
 			return
 		}
 
-		if !testRunning.TryLock() {
+		if !updateRunning.TryLock() {
 			writeError(w, http.StatusConflict,
-				"another source is being tested — try again in a moment")
+				"another source is being updated — try again in a moment")
 			return
 		}
-		defer testRunning.Unlock()
+		defer updateRunning.Unlock()
 
 		started := time.Now()
 		output, runErr := runScraper(r.Context(), body.Name, dataDir)
@@ -120,14 +119,14 @@ func TestSourceHandler(s *store.Store, dataDir string) http.HandlerFunc {
 		if message == "" && runErr != nil {
 			message = runErr.Error()
 		}
-		slog.Info("source tested", "name", body.Name, "ok", ok,
+		slog.Info("source updated", "name", body.Name, "ok", ok,
 			"seconds", elapsed.Seconds(), "message", message)
 
 		writeJSON(w, http.StatusOK, map[string]any{
 			"name":     body.Name,
 			"ok":       ok,
 			"message":  message,
-			"output":   tail(scraperLogLines(output), testOutputTail),
+			"output":   tail(scraperLogLines(output), updateOutputTail),
 			"seconds":  int(elapsed.Seconds() + 0.5),
 			"exitedOK": runErr == nil,
 		})
@@ -140,11 +139,11 @@ func TestSourceHandler(s *store.Store, dataDir string) http.HandlerFunc {
 // scrape_runs row explain why far better than a status code.
 func runScraper(parent context.Context, name, dataDir string) (string, error) {
 
-	ctx, cancel := context.WithTimeout(parent, testTimeout)
+	ctx, cancel := context.WithTimeout(parent, updateTimeout)
 	defer cancel()
 
 	command := exec.CommandContext(ctx, "python3", "-m", "daysout_scraper",
-		"--sources", name, "--max-pages", testPageLimit, "--keep-seed")
+		"--sources", name, "--keep-seed")
 	command.Dir = scraperDir()
 	command.Env = append(os.Environ(), "DAYSOUT_DATA="+dataDir)
 
@@ -152,7 +151,7 @@ func runScraper(parent context.Context, name, dataDir string) (string, error) {
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return string(output), fmt.Errorf(
 			"gave up after %s — the site is slow, or the crawl is large",
-			testTimeout)
+			updateTimeout)
 	}
 	return string(output), err
 }

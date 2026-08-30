@@ -29,7 +29,7 @@ func TestAddSourceAcceptsWhatPeopleActuallyType(t *testing.T) {
 
 	for _, tc := range cases {
 		s := newTestStore(t)
-		source, err := s.AddSource(tc.typed, "craft", "")
+		source, err := s.AddSource(tc.typed, "craft", "", "", "")
 		if err != nil {
 			t.Fatalf("AddSource(%q): %v", tc.typed, err)
 		}
@@ -66,7 +66,7 @@ func TestAddSourceRejectsWhatCannotBeScraped(t *testing.T) {
 
 	for _, tc := range cases {
 		s := newTestStore(t)
-		if _, err := s.AddSource(tc.typed, "garden", ""); err == nil {
+		if _, err := s.AddSource(tc.typed, "garden", "", "", ""); err == nil {
 			t.Errorf("AddSource(%q) succeeded, want a refusal", tc.typed)
 		} else if !strings.Contains(err.Error(), tc.wantInErr) {
 			t.Errorf("AddSource(%q) error = %q, want it to mention %q",
@@ -78,7 +78,7 @@ func TestAddSourceRejectsWhatCannotBeScraped(t *testing.T) {
 func TestAddSourceRejectsAnUnknownKind(t *testing.T) {
 
 	s := newTestStore(t)
-	if _, err := s.AddSource("https://example.org/", "art", "telepathy"); err == nil {
+	if _, err := s.AddSource("https://example.org/", "art", "telepathy", "", ""); err == nil {
 		t.Error("an unknown extractor kind should be refused, not stored")
 	}
 }
@@ -86,11 +86,11 @@ func TestAddSourceRejectsAnUnknownKind(t *testing.T) {
 func TestAddSourceIsNotSilentlyDuplicated(t *testing.T) {
 
 	s := newTestStore(t)
-	if _, err := s.AddSource("https://example.org/events", "music", ""); err != nil {
+	if _, err := s.AddSource("https://example.org/events", "music", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	// Same site, typed without the scheme — still the same site.
-	_, err := s.AddSource("example.org/events", "music", "")
+	_, err := s.AddSource("example.org/events", "music", "", "", "")
 	if !errors.Is(err, ErrSourceExists) {
 		t.Fatalf("second add error = %v, want ErrSourceExists", err)
 	}
@@ -99,12 +99,12 @@ func TestAddSourceIsNotSilentlyDuplicated(t *testing.T) {
 func TestNamesStayUniqueWhenTheyCollide(t *testing.T) {
 
 	s := newTestStore(t)
-	first, err := s.AddSource("https://example.org/events", "music", "")
+	first, err := s.AddSource("https://example.org/events", "music", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Different URL, same derived name.
-	second, err := s.AddSource("https://example.org/events/2027", "music", "")
+	second, err := s.AddSource("https://example.org/events/2027", "music", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,49 +113,69 @@ func TestNamesStayUniqueWhenTheyCollide(t *testing.T) {
 	}
 }
 
-func TestDeleteOnlyRemovesSourcesAddedHere(t *testing.T) {
+func TestRemovalIsRememberedSoItStays(t *testing.T) {
 
 	s := newTestStore(t)
-	added, err := s.AddSource("https://example.org/events", "music", "")
+	added, err := s.AddSource("https://example.org/events", "music", "", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := s.DeleteSource(added.Name); err != nil {
-		t.Fatalf("deleting a source added here: %v", err)
+		t.Fatalf("removing a source: %v", err)
 	}
 
-	// A seeded candidate, as the scraper writes it. Deleting one is
-	// pointless — the next scrape re-inserts it — so it must be refused
-	// with an explanation rather than appearing to work.
+	// The scraper re-inserts any candidate missing from the table, so a
+	// removal that is not recorded quietly undoes itself on the next run.
+	var recorded int
+	if err := s.DB.QueryRow(
+		`SELECT COUNT(*) FROM removed_sources WHERE name = ?`,
+		added.Name).Scan(&recorded); err != nil {
+		t.Fatal(err)
+	}
+	if recorded != 1 {
+		t.Error("a removed source should be recorded, or the scraper adds it back")
+	}
+}
+
+func TestSeededCandidatesCanAlsoBeRemoved(t *testing.T) {
+
+	s := newTestStore(t)
 	if _, err := s.DB.Exec(
 		`INSERT INTO sources (name, url, kind, category, enabled, notes, added)
 		 VALUES ('seeded', 'https://seeded.example/', 'auto', 'garden',
 		         1, 'a candidate from the scraper', '2026-01-01')`); err != nil {
 		t.Fatal(err)
 	}
-	err = s.DeleteSource("seeded")
-	if err == nil {
-		t.Fatal("deleting a seeded candidate should be refused")
+	if err := s.DeleteSource("seeded"); err != nil {
+		t.Fatalf("a seeded candidate should be removable now: %v", err)
 	}
-	if !strings.Contains(err.Error(), "disable") {
-		t.Errorf("error = %q, want it to point at disabling instead", err)
+}
+
+func TestABuiltInSourceCannotBeRemoved(t *testing.T) {
+
+	// Wikidata and English Heritage live in the scraper's code and have no
+	// row here, so there is nothing to remove and saying so is kinder than
+	// appearing to succeed.
+	s := newTestStore(t)
+	err := s.DeleteSource("english_heritage")
+	if err == nil {
+		t.Fatal("removing a built-in source should be refused")
+	}
+	if !strings.Contains(err.Error(), "built into the scraper") {
+		t.Errorf("error = %q, want it to explain why", err)
 	}
 }
 
 func TestSourcesListsWhatTheScraperRecorded(t *testing.T) {
 
 	s := newTestStore(t)
-	if _, err := s.AddSource("https://example.org/events", "music", "browser"); err != nil {
+	if _, err := s.AddSource("https://example.org/events", "music", "browser", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.DB.Exec(
 		`UPDATE sources SET last_status = 'sitemap' WHERE name = 'example-events'`); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetSourceEnabled("example-events", false); err != nil {
-		t.Fatal(err)
-	}
-
 	sources, err := s.Sources()
 	if err != nil {
 		t.Fatal(err)
@@ -165,9 +185,6 @@ func TestSourcesListsWhatTheScraperRecorded(t *testing.T) {
 	}
 	if sources[0].LastStatus != "sitemap" {
 		t.Errorf("lastStatus = %q, want the scraper's verdict", sources[0].LastStatus)
-	}
-	if sources[0].Enabled {
-		t.Error("source should be disabled after SetSourceEnabled(false)")
 	}
 	if sources[0].Kind != "browser" {
 		t.Errorf("kind = %q, want the kind it was added with", sources[0].Kind)
@@ -213,7 +230,7 @@ func seedRun(t *testing.T, s *Store, name string, ok bool, message string,
 func TestSourcesReportWhatEachIsContributing(t *testing.T) {
 
 	s := newTestStore(t)
-	if _, err := s.AddSource("https://quiet.example.org/", "craft", ""); err != nil {
+	if _, err := s.AddSource("https://quiet.example.org/", "craft", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	seedRun(t, s, "quiet-example", false, "no places found", 0)
@@ -264,7 +281,7 @@ func TestSourcesReportWhatEachIsContributing(t *testing.T) {
 func TestASourceThatHasNeverRunReportsNoOutcome(t *testing.T) {
 
 	s := newTestStore(t)
-	if _, err := s.AddSource("https://new.example.org/", "craft", ""); err != nil {
+	if _, err := s.AddSource("https://new.example.org/", "craft", "", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	sources, err := s.Sources()

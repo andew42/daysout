@@ -16,14 +16,18 @@ import (
 // trying a new listing site is a row, not a release — which is what lets
 // the UI add one.
 type Source struct {
-	Name       string `json:"name"`
-	URL        string `json:"url"`
-	Kind       string `json:"kind"`
-	Category   string `json:"category"`
-	Enabled    bool   `json:"enabled"`
-	Notes      string `json:"notes"`
-	Added      string `json:"added"`
-	LastStatus string `json:"lastStatus"`
+	Name     string `json:"name"`
+	URL      string `json:"url"`
+	Kind     string `json:"kind"`
+	Category string `json:"category"`
+	Enabled  bool   `json:"enabled"`
+	Notes    string `json:"notes"`
+	Added    string `json:"added"`
+	// A site that is one venue: used only when an event brings no venue
+	// of its own, which is the usual case on an attraction's own website.
+	VenueName     string `json:"venueName"`
+	VenuePostcode string `json:"venuePostcode"`
+	LastStatus    string `json:"lastStatus"`
 	// UserAdded rows may be deleted; seeded ones may only be disabled,
 	// because the scraper re-inserts any candidate missing from the table.
 	UserAdded bool `json:"userAdded"`
@@ -98,6 +102,7 @@ SELECT n.name,
        COALESCE(s.url, ''), COALESCE(s.kind, ''), COALESCE(s.category, ''),
        COALESCE(s.enabled, 1), COALESCE(s.notes, ''), COALESCE(s.added, ''),
        COALESCE(s.last_status, ''),
+       COALESCE(s.venue_name, ''), COALESCE(s.venue_postcode, ''),
        s.name IS NULL AS built_in,
        (SELECT COUNT(*) FROM events e WHERE e.source = n.name),
        (SELECT COUNT(*) FROM destinations d WHERE d.source = n.name),
@@ -108,7 +113,7 @@ SELECT n.name,
        (SELECT r.message FROM scrape_runs r
           WHERE r.source = n.name ORDER BY r.id DESC LIMIT 1)
 FROM names n LEFT JOIN sources s ON s.name = n.name
-ORDER BY 10 DESC, 11 DESC, n.name`
+ORDER BY 12 DESC, 13 DESC, n.name`
 
 // Sources returns every source with what it is contributing, for the UI.
 func (s *Store) Sources() ([]Source, error) {
@@ -128,7 +133,8 @@ func (s *Store) Sources() ([]Source, error) {
 		var lastOK sql.NullBool
 
 		if err := rows.Scan(&src.Name, &src.URL, &src.Kind, &src.Category,
-			&enabled, &src.Notes, &src.Added, &src.LastStatus, &builtIn,
+			&enabled, &src.Notes, &src.Added, &src.LastStatus,
+			&src.VenueName, &src.VenuePostcode, &builtIn,
 			&src.Events, &src.Destinations,
 			&lastRun, &lastOK, &lastMessage); err != nil {
 			return nil, err
@@ -228,7 +234,7 @@ func (s *Store) sourceName(parsed *url.URL) (string, error) {
 // is the whole design), so a new row is a request, not a result. The
 // scraper probes it, records what it found in last_status, and the UI
 // shows that back.
-func (s *Store) AddSource(rawURL, category, kind string) (Source, error) {
+func (s *Store) AddSource(rawURL, category, kind, venueName, venuePostcode string) (Source, error) {
 
 	normalised, err := normaliseSourceURL(rawURL)
 	if err != nil {
@@ -261,56 +267,43 @@ func (s *Store) AddSource(rawURL, category, kind string) (Source, error) {
 
 	added := sourceTimestamp()
 	notes := UIAddedNote
+	venuePostcode = strings.ToUpper(strings.TrimSpace(venuePostcode))
+	venueName = strings.TrimSpace(venueName)
 	if _, err := s.DB.Exec(
-		`INSERT INTO sources (name, url, kind, category, enabled, notes, added)
-		 VALUES (?, ?, ?, ?, 1, ?, ?)`,
-		name, normalised, kind, category, notes, added); err != nil {
+		`INSERT INTO sources (name, url, kind, category, enabled, notes, added,
+		     venue_name, venue_postcode)
+		 VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+		name, normalised, kind, category, notes, added,
+		venueName, venuePostcode); err != nil {
 		return Source{}, err
 	}
 
 	return Source{Name: name, URL: normalised, Kind: kind, Category: category,
-		Enabled: true, Notes: notes, Added: added, UserAdded: true}, nil
+		Enabled: true, Notes: notes, Added: added, UserAdded: true,
+		VenueName: venueName, VenuePostcode: venuePostcode}, nil
 }
 
-// SetSourceEnabled turns a source on or off for future scrapes.
-func (s *Store) SetSourceEnabled(name string, enabled bool) error {
+// DeleteSource removes a source and remembers that it was removed.
+//
+// Without the record the scraper would re-insert any candidate missing
+// from the table on its next run, so a removal would quietly undo itself.
+// Sources written in code have no row here and cannot be removed.
+//
+// Destinations and events the source already contributed stay where they
+// are — nothing here deletes data the map is showing.
+func (s *Store) DeleteSource(name string) error {
 
-	value := 0
-	if enabled {
-		value = 1
-	}
-	result, err := s.DB.Exec(
-		`UPDATE sources SET enabled = ? WHERE name = ?`, value, name)
+	result, err := s.DB.Exec(`DELETE FROM sources WHERE name = ?`, name)
 	if err != nil {
 		return err
 	}
 	if rows, _ := result.RowsAffected(); rows == 0 {
-		return fmt.Errorf("no source named %q", name)
+		return fmt.Errorf("no source named %q (sources built into the "+
+			"scraper cannot be removed)", name)
 	}
-	return nil
-}
-
-// DeleteSource removes a source added through the UI. Seeded candidates
-// are refused rather than silently reappearing at the next scrape, which
-// re-inserts anything missing from the table; disable those instead.
-//
-// Destinations and events an enabled source already contributed stay
-// where they are — nothing here deletes data the map is showing.
-func (s *Store) DeleteSource(name string) error {
-
-	var notes string
-	err := s.DB.QueryRow(`SELECT notes FROM sources WHERE name = ?`, name).Scan(&notes)
-	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("no source named %q", name)
-	}
-	if err != nil {
-		return err
-	}
-	if !strings.HasPrefix(notes, UIAddedNote) {
-		return errors.New("that source is one of the built-in candidates — " +
-			"disable it instead, or the scraper will add it back")
-	}
-	_, err = s.DB.Exec(`DELETE FROM sources WHERE name = ?`, name)
+	_, err = s.DB.Exec(
+		`INSERT OR REPLACE INTO removed_sources (name, removed_at) VALUES (?, ?)`,
+		name, sourceTimestamp())
 	return err
 }
 
