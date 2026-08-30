@@ -54,8 +54,21 @@ def run_source(db, fetcher, source, max_pages=0):
     try:
         pending_events = []
         unplaced = []
+        unlocated = []
         for kind, item in source.scrape(fetcher, max_pages=max_pages):
             if kind == "place":
+                # A source may publish an address without coordinates, which
+                # every source until now happened to carry. Geocode from the
+                # postcode as event venues already are; a place with neither
+                # cannot be sorted by distance, so it would be invisible.
+                if "lat" not in item:
+                    coordinates = dbmod.geocode(db, item.get("postcode", ""))
+                    if not coordinates:
+                        unlocated.append(
+                            f"{item.get('name', '?')} "
+                            f"({item.get('postcode') or 'no postcode'})")
+                        continue
+                    item["lat"], item["lon"] = coordinates
                 dbmod.upsert_destination(db, source.name, item)
                 name_to_source_id[_normalise_name(item["name"])] = item["source_id"]
                 places += 1
@@ -149,6 +162,9 @@ def run_source(db, fetcher, source, max_pages=0):
         log.info("%s: %s", source.name, message)
         for description in unplaced[:10]:
             log.info("%s: could not place %s", source.name, description)
+        if unlocated:
+            log.info("%s: %d place(s) skipped with no geocodable postcode: %s",
+                     source.name, len(unlocated), "; ".join(unlocated[:5]))
         dbmod.finish_run(db, run_id, ok=True, message=message)
         return True, message
     except Exception as e:  # noqa: BLE001 — record the failure, don't crash the run

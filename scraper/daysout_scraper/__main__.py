@@ -55,7 +55,13 @@ def main():
     seed_sources.ensure(db)
     wanted = args.sources.split(",") if args.sources else []
     selected = [s() for s in sources.IMPLEMENTED if not wanted or s.name in wanted]
-    selected += [s for s in feeds.load_enabled(db) if not wanted or s.name in wanted]
+
+    # A code source wins a name outright. Both lists run in one pass, so a
+    # table row sharing a name would scrape the same site a second way and
+    # overwrite the better run's result with its own.
+    in_code = {s.name for s in sources.IMPLEMENTED}
+    selected += [s for s in feeds.load_enabled(db)
+                 if (not wanted or s.name in wanted) and s.name not in in_code]
     if not selected:
         available = [s.name for s in sources.IMPLEMENTED] + \
                     [s.name for s in feeds.load_enabled(db)]

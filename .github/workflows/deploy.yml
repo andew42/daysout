@@ -331,6 +331,45 @@ jobs:
             python3 -m daysout_scraper.inspect --source english_heritage \
               --kind event --newest --count 3 || true
 
+      - name: What a Historic Houses page carries
+        # The parser was written from the sitemap's shape and the site's
+        # own description of a house page, because nothing in the sandbox
+        # can reach the site. This says which of its three ways of finding
+        # a postcode actually fires, so the guesswork can be removed.
+        continue-on-error: true
+        run: |
+          cd /opt/daysout/scraper
+          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -c "
+          import logging, sys
+          logging.basicConfig(level=logging.INFO)
+          sys.path.insert(0, '.')
+          from daysout_scraper.fetch import Fetcher
+          from daysout_scraper.sitemap_source import sitemap_urls
+          from daysout_scraper.sources import historic_houses as hh
+
+          fetcher = Fetcher('/var/lib/daysout/scrape-cache')
+          urls = [u for u in sitemap_urls(fetcher, hh.HistoricHouses.sitemaps[0])
+                  if hh.HOUSE_RE.match(u)]
+          print(len(urls), 'house pages in the sitemap')
+          for url in urls[:5]:
+              body = fetcher.get(url)
+              from bs4 import BeautifulSoup
+              soup = BeautifulSoup(body, 'html.parser')
+              from daysout_scraper import jsonld
+              types = sorted({t for o in jsonld.extract_objects(body)
+                                for t in (o.get('@type') if isinstance(o.get('@type'), list)
+                                          else [o.get('@type')]) if t})
+              found, how = hh._postcode_from_markup(soup)
+              place = hh.parse_house(body, url)
+              print(f'=== {url}')
+              print(f'    {len(body)} bytes | JSON-LD types: {types or \"(none)\"}')
+              print(f'    markup postcode: {found or \"(none)\"} via {how or \"(nothing)\"}')
+              if place:
+                  print(f'    PARSED {place[\"name\"]} | {place[\"postcode\"]}'
+                        f' | {place[\"category\"]}')
+              else:
+                  print('    NOT PARSED — no postcode found on this page')" || true
+
       - name: What the Events tab actually receives
         # "No change" after a deploy has two very different causes: the
         # server is not sending the new data, or the browser is showing an

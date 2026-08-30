@@ -22,7 +22,7 @@ daysout/
 │   └── src/           .jsx files: MapView, EventsView, SettingsView, api, settings
 ├── scraper/           Python 3.11+ package (requests + beautifulsoup4)
 │   ├── daysout_scraper/          pipeline, polite fetcher, JSON-LD engine
-│   ├── daysout_scraper/sources/  national_trust, english_heritage (+ stubs)
+│   ├── daysout_scraper/sources/  national_trust, english_heritage, historic_houses (+ stubs)
 │   └── tests/         fixture-based; python3 -m unittest discover tests
 ├── setup/             One-off data population (postcodes, map tiles)
 ├── packaging/         systemd units + timer + install.sh
@@ -106,6 +106,17 @@ daysout/
   National Trust must never be given kind='browser'; `refusedHosts` in
   `backend/store/sources.go` keeps it out of the Sources tab, and the code
   source stops rather than pushes on.
+- **Historic Houses** (`sources/historic_houses.py`) covers the privately
+  owned houses the two big charities leave out. Its `house-sitemap.xml` is
+  one entry per house and carries no events, so it contributes places only,
+  and a house page publishes an address rather than coordinates — hence
+  `pipeline` geocoding a place from its postcode, and dropping one it
+  cannot geocode rather than storing it at 0,0. A code source and a
+  `sources` row must never share a name (both lists run in one pass and
+  the loser overwrites the winner's result): `SUPERSEDED` in
+  `seed_sources.py` deletes the row, deliberately *not* via `RETIRED`,
+  whose `removed_sources` entry would also hide the code source from the
+  Sources tab.
 - **Sources live in the database**, not only in code: the `sources` table
   holds (name, url, kind, category, enabled). `sources/feeds.py` turns a
   row into a runnable source, so adding a listing site is an INSERT — which

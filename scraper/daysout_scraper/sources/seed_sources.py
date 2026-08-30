@@ -25,8 +25,6 @@ CANDIDATES = [
 
     # Privately owned houses open to the public — the gap left by the
     # National Trust and English Heritage.
-    ("historic-houses", "https://www.historichouses.org/",
-     "auto", "historic-house", "Historic Houses: independently owned houses"),
     ("invitation-to-view", "https://www.invitationtoview.co.uk/",
      "auto", "historic-house", "Private house tours by invitation"),
 
@@ -59,8 +57,6 @@ CANDIDATES = [
 # to 404, applied only when the row still holds that exact wrong value, so
 # anything edited by hand is left alone.
 URL_FIXES = [
-    ("historic-houses", "https://www.historichouses.org/whats-on/",
-     "https://www.historichouses.org/"),
     ("rhs-events", "https://www.rhs.org.uk/events", "https://www.rhs.org.uk/"),
 ]
 
@@ -79,7 +75,6 @@ URL_FIXES = [
 BROWSER = [
     ("ngs-open-gardens", "listing built client-side; retry rendered"),
     ("ngs-find-a-garden", "garden search is client-side; retry rendered"),
-    ("historic-houses", "listing built client-side; retry rendered"),
     ("invitation-to-view", "listing built client-side; retry rendered"),
     ("creative-crafts", "listing built client-side; retry rendered"),
     ("festival-calendar-art", "listing built client-side; retry rendered"),
@@ -105,6 +100,17 @@ RETIRED = [
      "no events after rendering: an open-houses trail publishes its dates "
      "in prose on a festival page, not per house"),
 ]
+
+# Candidates a built-in parser now handles. The generic feed row has to go
+# — the two share a name, so both would run and the failing one would
+# overwrite the other's result — but unlike RETIRED it must NOT be recorded
+# as removed: that list is what the Sources page filters out, and the code
+# source would vanish from the UI along with the row it replaced.
+SUPERSEDED = [
+    ("historic-houses",
+     "now crawled by the built-in Historic Houses parser (house-sitemap.xml)"),
+]
+
 
 def ensure(db):
     """Insert any candidate that isn't in the table yet, and apply the
@@ -140,6 +146,9 @@ def ensure(db):
         db.execute(
             "INSERT OR REPLACE INTO removed_sources (name, removed_at)"
             " VALUES (?, ?)", (name, dbmod.now()))
+
+    for name, reason in SUPERSEDED:
+        db.execute("DELETE FROM sources WHERE name = ?", (name,))
 
     for name, reason in DISABLE:
         db.execute(
