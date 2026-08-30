@@ -476,6 +476,33 @@ jobs:
             done
           done
 
+          echo "########## the list every Shuttleworth page carries"
+          cd /opt/daysout/scraper
+          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -c "
+          import sys; sys.path.insert(0, '.')
+          from bs4 import BeautifulSoup
+          from daysout_scraper.fetch import Fetcher
+          from daysout_scraper.domscan import DATE_TEXT_RE
+          fetcher = Fetcher('/var/lib/daysout/scrape-cache')
+          body = fetcher.get('https://www.shuttleworth.org/events/christmas-market-at-shuttleworth-house')
+          soup = BeautifulSoup(body, 'html.parser')
+          # The same dated <li>s appear on every event page. If each one
+          # links to its event, one page is the whole calendar.
+          shown = 0
+          for li in soup.find_all('li'):
+              text = li.get_text(' ', strip=True)
+              if not DATE_TEXT_RE.search(text) or len(text) > 200:
+                  continue
+              links = [a.get('href') for a in li.find_all('a', href=True)]
+              print('---', text[:120])
+              print('    links:', links[:3])
+              print('    class:', li.get('class'), '| parent:',
+                    li.parent.name, li.parent.get('class'))
+              shown += 1
+              if shown >= 8:
+                  break
+          print('dated list items found:', shown)" || true
+
           echo "########## where dates sit on a Shuttleworth event page"
           cd /opt/daysout/scraper
           sudo env DAYSOUT_DATA=/var/lib/daysout python3 -c "
