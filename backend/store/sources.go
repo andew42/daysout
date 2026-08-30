@@ -83,6 +83,16 @@ func sourceTimestamp() string {
 	return time.Now().UTC().Format("2006-01-02T15:04:05.000000Z")
 }
 
+// CodeSources are the sources written in Python rather than held in the
+// sources table, so they have no row to join to and are still real.
+//
+// Kept in step with scraper/daysout_scraper/sources/__init__.py by a test:
+// a name missing from here would be treated as leftover history and hidden
+// from the Sources tab the moment its row was gone.
+var CodeSources = []string{
+	"wikidata", "english_heritage", "national_trust", "historic-houses",
+}
+
 // sourcesQuery lists every source the scraper has, with what each one is
 // contributing.
 //
@@ -146,6 +156,14 @@ func (s *Store) Sources() ([]Source, error) {
 		}
 		src.Enabled = enabled != 0
 		src.BuiltIn = builtIn != 0
+
+		// A name with no row that no code source claims is leftover
+		// history, not a source. Listing it showed a source that could
+		// not be scraped (the scraper has nothing to run), could not be
+		// updated, and could not be removed because it looked built in.
+		if src.BuiltIn && !slices.Contains(CodeSources, src.Name) {
+			continue
+		}
 		src.UserAdded = strings.HasPrefix(src.Notes, UIAddedNote)
 		src.LastRun = lastRun.String
 		src.LastRunOK = lastOK.Valid && lastOK.Bool

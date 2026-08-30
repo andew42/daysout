@@ -3,6 +3,10 @@ package store
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -455,5 +459,81 @@ func TestContributionShowsADateRangeWhenThereIsOne(t *testing.T) {
 	}
 	if contribution.Events[0].When != "2026-09-05 – 2026-09-07" {
 		t.Errorf("when = %q, want the range", contribution.Events[0].When)
+	}
+}
+
+// A user-added source whose row is gone leaves its scrape_runs history
+// behind. The union brought that history back as a source with no row,
+// which reads as built in: listed for ever, never scraped (the scraper
+// has no row to run), and impossible to remove. shuttleworth-events sat
+// like that on the live site, reporting a failure from hours earlier.
+func TestLeftoverHistoryIsNotASource(t *testing.T) {
+
+	store := newTestStore(t)
+	if _, err := store.DB.Exec(
+		`INSERT INTO scrape_runs (source, started_at, finished_at, ok, message)
+		 VALUES ('shuttleworth-events', '2026-08-30T17:55:41Z',
+		         '2026-08-30T17:55:53Z', 0, 'no places found'),
+		        ('english_heritage', '2026-08-30T21:36:41Z',
+		         '2026-08-30T21:37:02Z', 1, '392 places')`); err != nil {
+		t.Fatal(err)
+	}
+
+	sources, err := store.Sources()
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, s := range sources {
+		names[s.Name] = true
+	}
+	if names["shuttleworth-events"] {
+		t.Error("a name with no row and no code source was listed as a source")
+	}
+	if !names["english_heritage"] {
+		t.Error("a code source has no row either, and must still be listed")
+	}
+}
+
+// The Go list above and the scraper's registry must agree: a code source
+// missing from CodeSources vanishes from the Sources tab the moment its
+// table row goes, which is exactly the bug this pair exists to prevent.
+func TestCodeSourcesMatchTheScraper(t *testing.T) {
+
+	source, err := os.ReadFile("../../scraper/daysout_scraper/sources/__init__.py")
+	if err != nil {
+		t.Skipf("scraper not present: %v", err)
+	}
+	classes := regexp.MustCompile(`IMPLEMENTED = \[([^\]]*)\]`).FindSubmatch(source)
+	if classes == nil {
+		t.Fatal("sources/__init__.py no longer declares IMPLEMENTED")
+	}
+
+	// Each class names itself; read the name off its module instead.
+	for _, class := range strings.Split(string(classes[1]), ",") {
+		class = strings.TrimSpace(class)
+		if class == "" {
+			continue
+		}
+		pattern := regexp.MustCompile(`(?s)class ` + class + `\b.*?name = "([^"]+)"`)
+		files, _ := filepath.Glob("../../scraper/daysout_scraper/sources/*.py")
+		found := ""
+		for _, file := range files {
+			body, err := os.ReadFile(file)
+			if err != nil {
+				continue
+			}
+			if match := pattern.FindSubmatch(body); match != nil {
+				found = string(match[1])
+				break
+			}
+		}
+		if found == "" {
+			t.Errorf("could not find the source name for %s", class)
+			continue
+		}
+		if !slices.Contains(CodeSources, found) {
+			t.Errorf("CodeSources is missing %q (class %s)", found, class)
+		}
 	}
 }

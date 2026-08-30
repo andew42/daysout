@@ -252,7 +252,8 @@ jobs:
         continue-on-error: true
         run: |
           cd /opt/daysout/scraper
-          for URL in https://ngs.org.uk/ https://www.historichouses.org/ \
+          for URL in https://ngs.org.uk/ https://www.shuttleworth.org/ \
+                     https://www.stonor.com/ \
                      https://www.invitationtoview.co.uk/ https://aoh.org.uk/ \
                      https://www.thefestivalcalendar.co.uk/ ; do
             echo "########## $URL"
