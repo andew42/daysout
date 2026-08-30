@@ -40,6 +40,12 @@ jobs:
           echo
           curl -sf -o /dev/null -w "frontend: %{http_code}\n" http://localhost:8080/
           curl -sf -o /dev/null -w "spa route: %{http_code}\n" http://localhost:8080/events
+          curl -sf -o /dev/null -w "sources tab: %{http_code}\n" http://localhost:8080/sources
+          curl -sf http://localhost:8080/api/sources \
+            | python3 -c "
+          import json, sys
+          body = json.load(sys.stdin)
+          print('sources listed:', len(body['sources']), '| kinds:', ','.join(body['kinds']))"
           python3 -c "
           import json
           s = json.load(open('/tmp/status.json'))

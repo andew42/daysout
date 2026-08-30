@@ -53,6 +53,7 @@ func main() {
 	http.HandleFunc("/api/destinations", servers.DestinationsHandler(s))
 	http.HandleFunc("/api/events", servers.EventsHandler(s))
 	http.HandleFunc("/api/status", servers.StatusHandler(s))
+	http.HandleFunc("/api/sources", servers.SourcesHandler(s))
 
 	// Offline map: single-file tile archive plus the basemap's fonts/sprites,
 	// all placed in the data directory by setup/get-tiles.sh.

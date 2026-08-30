@@ -88,7 +88,17 @@ daysout/
   reading a page. NT must never be given kind='browser'.
 - **Sources live in the database**, not only in code: the `sources` table
   holds (name, url, kind, category, enabled). `sources/feeds.py` turns a
-  row into a runnable source, so adding a listing site is an INSERT.
+  row into a runnable source, so adding a listing site is an INSERT — which
+  is what lets the **Sources tab** (`frontend/src/SourcesView.jsx`,
+  `/api/sources`, `backend/store/sources.go`) add one from the browser.
+  Adding a source only writes the row: the server never fetches anything,
+  so the site is visited by the scraper on its next run and its verdict
+  shows up in `last_status`. Rows added there are marked in `notes` with
+  `store.UIAddedNote`, because only those are safe to delete — the scraper
+  re-inserts any seeded candidate missing from the table, so seeded rows
+  can only be disabled. `refusedHosts` in `sources.go` keeps National
+  Trust out of the form entirely rather than leaving a trap behind the Add
+  button.
   `kind` is ical | jsonld | sitemap | auto; auto probes the URL via
   `discover.py` and picks. `python3 -m daysout_scraper.discover` probes
   every row and records what it found in `sources.last_status` — run from

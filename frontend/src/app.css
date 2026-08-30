@@ -168,3 +168,60 @@ body {
   cursor: pointer;
 }
 .settings-view button:hover { filter: brightness(1.1); }
+
+/* Sources — the sites the scraper visits */
+.sources-view {
+  padding: 16px;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.sources-view h2 { margin: 0; font-size: 1.05rem; }
+.sources-intro { margin: 0; color: var(--muted); font-size: 0.88rem; max-width: 46em; }
+.sources-view .settings-view { padding: 0; max-width: none; gap: 14px; }
+.sources-view select {
+  padding: 8px 10px;
+  font-size: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #ffffff;
+}
+.sources-view .notice { padding: 0; }
+
+.source-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.source {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #ffffff;
+}
+/* A disabled source is still listed — knowing a site was tried and found
+   wanting is the point of keeping the row. */
+.source.disabled { opacity: 0.55; }
+.source-main { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.source-main strong { font-size: 0.95rem; }
+.source-main a,
+.source-meta,
+.source-notes {
+  font-size: 0.82rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.source-main a { color: var(--accent); }
+.source-notes { font-style: italic; }
+.source-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.source-actions button {
+  padding: 5px 12px;
+  font-size: 0.82rem;
+  color: var(--ink);
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.source-actions button:hover { background: #eef0e8; }
+.source-actions button.danger { color: #a03024; }

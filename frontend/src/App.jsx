@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import MapView from './MapView.jsx'
 import EventsView from './EventsView.jsx'
 import SettingsView from './SettingsView.jsx'
+import SourcesView from './SourcesView.jsx'
 import { fetchStatus } from './api.jsx'
 import { loadSettings } from './settings.jsx'
 
@@ -40,6 +41,7 @@ export default function App() {
         <nav>
           <NavLink to="/" end>Map</NavLink>
           <NavLink to="/events">Events</NavLink>
+          <NavLink to="/sources">Sources</NavLink>
           <NavLink to="/settings">Settings</NavLink>
         </nav>
       </header>
@@ -47,6 +49,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<RequireConfigured><MapView /></RequireConfigured>} />
           <Route path="/events" element={<RequireConfigured><EventsView /></RequireConfigured>} />
+          <Route path="/sources" element={<SourcesView />} />
           <Route path="/settings" element={<SettingsView />} />
         </Routes>
       </main>

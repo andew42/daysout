@@ -28,7 +28,11 @@ purpose. Their properties reach the map via Wikidata instead.
 ### Which event sources actually work
 
 Event sources live in the `sources` table, so trying a new listing site is
-an INSERT plus `python3 -m daysout_scraper.discover`, not a code change.
+a row, not a code change — add one from the **Sources** tab in the web UI
+(or by hand, plus `python3 -m daysout_scraper.discover`). Adding a site
+only records it: the server never fetches anything itself, so the scraper
+visits it on its next run and reports back what it found, which the tab
+shows against each site.
 Twelve candidates were tried against the real sites (August 2026), and the
 result is worth knowing before adding more:
 
