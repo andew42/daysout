@@ -21,6 +21,7 @@ much a URL list alone would actually tell us.
 """
 
 import argparse
+import json
 import logging
 import os
 import re
@@ -43,6 +44,17 @@ CONVENTIONAL_FEEDS = (
 )
 
 FEED_URL_RE = re.compile(r"\.(ics|rss|atom)$|/(feed|rss|atom)/?$", re.IGNORECASE)
+
+# A large share of UK venue and festival sites are WordPress running The
+# Events Calendar, which publishes a documented REST API: dated, located,
+# structured JSON, no rendering and no guessing at markup. It is the
+# cheapest thing to check and by far the best thing to find.
+WORDPRESS_EVENT_APIS = (
+    "wp-json/tribe/events/v1/events",   # The Events Calendar
+    "wp-json/wp/v2/tribe_events",       # same plugin, generic WP route
+    "wp-json/wp/v2/event",              # several other event plugins
+    "wp-json/",                         # is this WordPress at all?
+)
 
 # Tighter than the crawler's hint pattern, which deliberately includes
 # section fronts like /visit because they are worth *fetching*. Here we
@@ -162,10 +174,64 @@ def probe_conventional_feeds(fetcher, base):
                   f"(probably an error page) — {head[:80]}")
 
 
+def probe_event_apis(fetcher, base):
+    """Check for a WordPress events API, the best outcome available.
+
+    Finding one means dated, located JSON from a documented endpoint —
+    better than anything scraping a listing could give us.
+    """
+
+    print("\n=== WordPress event APIs")
+    for path in WORDPRESS_EVENT_APIS:
+        url = urljoin(base, path)
+        try:
+            body = fetcher.get(url)
+        except Exception as e:  # noqa: BLE001
+            print(f"    {url}\n        no: {str(e)[:110]}")
+            continue
+        if looks_like_a_challenge(body):
+            print(f"    {url}\n        bot-protection challenge")
+            continue
+        try:
+            payload = json.loads(body)
+        except ValueError:
+            print(f"    {url}\n        not JSON ({len(body)} bytes)")
+            continue
+
+        events = payload.get("events") if isinstance(payload, dict) else payload
+        if isinstance(events, list) and events:
+            print(f"    {url}\n        FOUND: {len(events)} event(s)")
+            for event in events[:3]:
+                if not isinstance(event, dict):
+                    continue
+                venue = event.get("venue") or {}
+                print(f"          {event.get('start_date', '?')}  "
+                      f"{_text(event.get('title'))[:50]}  @ "
+                      f"{_text(venue.get('venue'))[:30]} "
+                      f"{_text(venue.get('zip'))}")
+        elif isinstance(payload, dict) and "routes" in payload:
+            routes = [r for r in payload["routes"] if "event" in r.lower()]
+            print(f"    {url}\n        WordPress, {len(payload['routes'])} routes; "
+                  f"event routes: {', '.join(routes[:5]) or 'none'}")
+        else:
+            print(f"    {url}\n        JSON, but no events in it")
+
+
+def _text(value):
+    """WordPress returns either a string or {'rendered': '...'}."""
+    if isinstance(value, dict):
+        value = value.get("rendered", "")
+    return str(value or "")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", required=True, help="site root to examine")
     parser.add_argument("--cache", default="", help="page cache dir")
+    parser.add_argument("--skip-sitemap", action="store_true",
+                        help="skip walking the sitemap, which is slow on a "
+                             "large site — useful when only the APIs and "
+                             "feeds are in question")
     parser.add_argument("--skip-probes", action="store_true",
                         help="read robots.txt and the sitemap only, making no "
                              "requests for pages that may not exist")
@@ -179,8 +245,10 @@ def main():
 
     base = args.url if args.url.endswith("/") else args.url + "/"
     declared = robots_report(fetcher, base)
-    sitemap_report(fetcher, declared or [urljoin(base, "sitemap.xml")])
+    if not args.skip_sitemap:
+        sitemap_report(fetcher, declared or [urljoin(base, "sitemap.xml")])
     if not args.skip_probes:
+        probe_event_apis(fetcher, base)
         probe_conventional_feeds(fetcher, base)
 
 

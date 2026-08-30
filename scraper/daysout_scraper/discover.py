@@ -112,6 +112,10 @@ def main():
     parser.add_argument("--browser", action="store_true",
                         help="render the URL in a headless browser before "
                              "probing, for client-side-rendered listings")
+    parser.add_argument("--deep", action="store_true",
+                        help="when a page carries no dates, report what it "
+                             "does carry: iframes, search forms, and any "
+                             "repeated row-shaped blocks")
     parser.add_argument("--disable-empty", action="store_true",
                         help="disable sources that offer nothing usable")
     parser.add_argument("--all", action="store_true",
@@ -138,10 +142,10 @@ def main():
             with browser.Renderer(USER_AGENT) as renderer:
                 fetcher.renderer = renderer
                 print(describe(probe(fetcher, args.url, render=True)))
-                inspect_dom(fetcher, args.url, rendered=True)
+                inspect_dom(fetcher, args.url, rendered=True, deep=args.deep)
             return
         print(describe(probe(fetcher, args.url)))
-        inspect_dom(fetcher, args.url)
+        inspect_dom(fetcher, args.url, deep=args.deep)
         return
 
     added = seed_sources.ensure(db)
@@ -173,7 +177,7 @@ def main():
     print(f"{usable}/{len(rows)} source(s) publish something machine-readable")
 
 
-def inspect_dom(fetcher, url, rendered=False):
+def inspect_dom(fetcher, url, rendered=False, deep=False):
     """Print what a hand-written parser would have to work with.
 
     A source that publishes no Event JSON-LD is not automatically a dead
@@ -206,6 +210,17 @@ def inspect_dom(fetcher, url, rendered=False):
             print(domscan.describe(rendered_report, indent="      "))
             change = rendered_report["bytes"] - plain["bytes"]
             print(f"      rendering changed the page by {change:+d} bytes")
+
+    if deep:
+        # When the dates are not there, the next question is why. Look at
+        # the rendered page if we have one — an un-rendered shell explains
+        # nothing.
+        try:
+            body = fetcher.get(url, render=rendered)
+            print("    --- what IS on the page")
+            print(domscan.describe_deep(domscan.deep_scan(body), indent="      "))
+        except Exception as e:  # noqa: BLE001
+            print(f"    deep scan failed: {e}")
 
     print(f"    VERDICT: {domscan.verdict(plain, rendered_report)}")
 

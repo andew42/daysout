@@ -231,6 +231,34 @@ jobs:
               if 'visit' in line.lower() or line.lower().startswith(('user-agent', 'disallow')):
                   print('   ', line.strip())" || true
 
+      - name: Hunt for event APIs on the candidate sites
+        # A documented WordPress events API is the best outcome available:
+        # dated, located JSON, no rendering and no guessing at markup. A
+        # large share of UK venue sites run that plugin, so ask each of
+        # the sites that currently yield nothing.
+        continue-on-error: true
+        run: |
+          cd /opt/daysout/scraper
+          for URL in https://ngs.org.uk/ https://www.historichouses.org/ \
+                     https://www.invitationtoview.co.uk/ https://aoh.org.uk/ \
+                     https://www.thefestivalcalendar.co.uk/ ; do
+            echo "########## $URL"
+            sudo env DAYSOUT_DATA=/var/lib/daysout \
+              python3 -m daysout_scraper.feedhunt --url "$URL" --skip-sitemap || true
+          done
+
+      - name: What is actually on a listing page that carries no dates
+        # Rendering an NGS page added 130 KB and still produced no dates,
+        # which explains nothing on its own. Three things would: the
+        # listing is in an iframe, it is behind a search form, or it never
+        # arrives. The renderer now scrolls, which may itself fix it.
+        continue-on-error: true
+        run: |
+          cd /opt/daysout/scraper
+          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -m daysout_scraper.discover \
+            --url https://ngs.org.uk/gardens-open-this-week-midlands/ \
+            --browser --deep || true
+
       - name: Hunt for a sanctioned route into National Trust events
         # The pages are closed to us and we do not work around that, so
         # look for a route the site offers instead: a calendar feed, an

@@ -37,8 +37,9 @@ const UIAddedNote = "added via the web UI"
 
 // SourceKinds are the extractors the scraper knows. 'auto' probes the URL
 // and picks one, which is the right default for a site nobody has looked
-// at yet.
-var SourceKinds = []string{"auto", "browser", "ical", "jsonld", "sitemap"}
+// at yet — and it tries 'wpevents' first, because a documented API beats
+// every kind of scraping.
+var SourceKinds = []string{"auto", "wpevents", "browser", "ical", "jsonld", "sitemap"}
 
 // refusedHosts are sites this form should not queue an attempt at. The
 // National Trust is already covered by a source written in code, which

@@ -85,6 +85,11 @@ pip install playwright && python3 -m playwright install chromium
 # or point DAYSOUT_CHROMIUM at a Chromium already on the machine
 ```
 
+The best outcome for a new site is that it needs no scraping at all: a
+large share of UK venues and festivals run WordPress with The Events
+Calendar, which publishes a documented REST API of dated, located events.
+`feedhunt` looks for one, and source kind `wpevents` reads it.
+
 Whether a site is worth a hand-written DOM parser is decided by evidence,
 not by guessing: `discover --url <page> --browser` prints the served page
 and the rendered page side by side — dates, date-carrying elements, event

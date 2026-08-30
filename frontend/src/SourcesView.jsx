@@ -7,6 +7,7 @@ import { ALL_CATEGORIES } from './settings.jsx'
 // answer for a site nobody has looked at yet.
 const KIND_LABELS = {
   auto: 'Work it out automatically',
+  wpevents: 'WordPress events API (best, if the site has one)',
   browser: 'Render the page in a browser first',
   ical: 'Calendar feed (.ics)',
   jsonld: 'Event data on the page itself',

@@ -11,7 +11,12 @@ event brings its destination with it, which is what makes distance
 sorting work for sites we have never seen before.
 """
 
+import json
 import logging
+from datetime import date
+from urllib.parse import urljoin
+
+from bs4 import BeautifulSoup
 
 from .. import discover, domscan, ical, jsonld, postcode
 from ..sitemap_source import sitemap_urls
@@ -24,6 +29,16 @@ log = logging.getLogger(__name__)
 # modified pages — on an events site those are the current events.
 DEFAULT_SITEMAP_PAGES = 50
 
+# The Events Calendar, the WordPress plugin a large share of UK venues and
+# festivals run, publishes a documented REST API. Dated, located,
+# structured JSON — better than anything reading a listing could give us,
+# and it needs no rendering and no guessing at markup.
+EVENTS_API_PATHS = ("wp-json/tribe/events/v1/events",)
+EVENTS_API_PAGE_SIZE = 50
+
+# A planner needs the coming months, not a site's whole history.
+MAX_API_PAGES = 6
+
 # The newest pages on a site are often blog posts and news, not events, so
 # prefer paths that look like an event before falling back on recency.
 # Shared with the DOM diagnostic, which asks the same question of a page's
@@ -34,6 +49,14 @@ EVENT_URL_HINT_RE = domscan.EVENT_URL_HINT_RE
 # Shared with the pipeline, which digs for a postcode the same way for
 # sources written in code.
 find_postcode = postcode.find
+
+
+def _plain(value):
+    """WordPress gives a string or {'rendered': '<p>…</p>'}; want the text."""
+    if isinstance(value, dict):
+        value = value.get("rendered", "")
+    text = str(value or "")
+    return " ".join(BeautifulSoup(text, "html.parser").get_text(" ").split())
 
 
 class FeedSource:
@@ -61,10 +84,17 @@ class FeedSource:
             yield from self._from_sitemap(fetcher, max_pages)
         elif kind == "browser":
             yield from self._from_browser(fetcher)
+        elif kind == "wpevents":
+            yield from self._from_events_api(fetcher)
         else:
             log.warning("%s: unsupported kind %r", self.name, kind)
 
     def _detect(self, fetcher):
+        # A documented API beats every kind of scraping, so ask first.
+        if self._events_api_url(fetcher):
+            log.info("%s: found a WordPress events API", self.name)
+            return "wpevents"
+
         report = discover.probe(fetcher, self.url)
         if "ical" in report["formats"]:
             return "ical"
@@ -138,6 +168,75 @@ class FeedSource:
         (inspect --browser) is what decides whether that is worth writing.
         """
         yield from self._from_jsonld(fetcher, render=True)
+
+    def _events_api_url(self, fetcher):
+        """The site's events API endpoint, or '' if it has none."""
+
+        base = self.url if self.url.endswith("/") else self.url + "/"
+        for path in EVENTS_API_PATHS:
+            url = urljoin(base, path)
+            try:
+                payload = json.loads(fetcher.get(url))
+            except Exception:  # noqa: BLE001 — no API here, try the next
+                continue
+            if isinstance(payload, dict) and isinstance(payload.get("events"), list):
+                return url
+        return ""
+
+    def _from_events_api(self, fetcher):
+        """Read events from The Events Calendar's REST API.
+
+        Paged through `next_rest_url`, which the plugin supplies, rather
+        than by guessing page numbers. Only events from today onwards are
+        asked for: the archive is large and of no use to a planner.
+        """
+
+        url = self._events_api_url(fetcher)
+        if not url:
+            log.warning("%s: no events API at %s", self.name, self.url)
+            return
+
+        separator = "&" if "?" in url else "?"
+        url = (f"{url}{separator}per_page={EVENTS_API_PAGE_SIZE}"
+               f"&start_date={date.today().isoformat()}")
+
+        found = 0
+        for _ in range(MAX_API_PAGES):
+            try:
+                payload = json.loads(fetcher.get(url))
+            except Exception as e:  # noqa: BLE001 — one bad page, keep what we have
+                log.warning("%s: %s failed: %s", self.name, url, e)
+                return
+            for event in payload.get("events", []):
+                parsed = self._api_event(event)
+                if parsed:
+                    found += 1
+                    yield "event", parsed
+            url = payload.get("next_rest_url")
+            if not url:
+                break
+        log.info("%s: %d event(s) from the events API", self.name, found)
+
+    def _api_event(self, event):
+        """One API record in the shape the pipeline stores, or None."""
+
+        title = _plain(event.get("title"))
+        start = str(event.get("start_date") or "")[:10]
+        if not title or len(start) != 10:
+            return None
+        venue = event.get("venue") or {}
+        location = _plain(venue.get("venue"))
+        return self._event(
+            {
+                "title": title,
+                "description": _plain(event.get("description"))[:400],
+                "url": event.get("url") or self.url,
+                "start_date": start,
+                "end_date": str(event.get("end_date") or start)[:10] or start,
+                "location_name": location,
+                "location_postcode": _plain(venue.get("zip")).upper(),
+            },
+            str(event.get("id") or f"{title}-{start}"))
 
     def _event(self, event, source_id):
         """Normalise into the shape the pipeline stores, carrying the venue."""

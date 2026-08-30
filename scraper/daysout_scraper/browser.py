@@ -64,6 +64,11 @@ LOAD_TIMEOUT_MS = 30000
 # After load, give client-side rendering a moment to populate the listing.
 SETTLE_MS = 2500
 
+# Scrolling gives a lazy-loaded listing its cue. Bounded so a page that
+# grows for ever (an infinite feed) cannot hold up the run.
+SCROLL_STEPS = 8
+SCROLL_SETTLE_MS = 800
+
 
 class BrowserUnavailable(Exception):
     """Playwright or its browser isn't installed."""
@@ -118,13 +123,41 @@ class Renderer:
             self._playwright.stop()
 
     def render(self, url):
-        """Returns the page's HTML after client-side rendering has settled."""
+        """Returns the page's HTML after client-side rendering has settled.
+
+        Waiting for `load` and then a fixed moment is not enough for a
+        listing that arrives as you scroll, which is how a lot of them are
+        built — the first version of this saw a National Garden Scheme
+        page grow by 130 KB and still carry no dates, because what
+        rendered was the page furniture and not the gardens. So scroll to
+        the bottom, giving lazy content its cue, and settle again.
+        """
         page = self._browser.new_page(user_agent=self.user_agent)
         try:
             page.goto(url, wait_until="load", timeout=LOAD_TIMEOUT_MS)
             # networkidle is unreliable on pages with polling or analytics,
             # so wait a fixed moment for the listing to populate instead.
             page.wait_for_timeout(SETTLE_MS)
+            self._scroll_through(page)
             return page.content()
         finally:
             page.close()
+
+    def _scroll_through(self, page):
+        """Scroll to the bottom in steps, waiting for content to arrive.
+
+        Stops early once the page stops growing, so a short page costs
+        almost nothing and an infinite one cannot run away with us.
+        """
+        previous = 0
+        for _ in range(SCROLL_STEPS):
+            try:
+                height = page.evaluate("document.body.scrollHeight")
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            except Exception as e:  # noqa: BLE001 — a page that won't scroll is fine
+                log.debug("scrolling %s failed: %s", page.url, e)
+                return
+            page.wait_for_timeout(SCROLL_SETTLE_MS)
+            if height == previous:
+                return
+            previous = height

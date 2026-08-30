@@ -128,8 +128,23 @@ daysout/
   can only be disabled. `refusedHosts` in `sources.go` keeps National
   Trust out of the form entirely rather than leaving a trap behind the Add
   button.
-  `kind` is ical | jsonld | sitemap | auto; auto probes the URL via
-  `discover.py` and picks. `python3 -m daysout_scraper.discover` probes
+  `kind` is wpevents | ical | jsonld | sitemap | browser | auto; auto
+  probes the URL via `discover.py` and picks, trying `wpevents` first
+  because a documented API beats every kind of scraping.
+- **`wpevents` reads The Events Calendar's REST API**
+  (`/wp-json/tribe/events/v1/events`), the WordPress plugin a large share
+  of UK venues and festivals run. It gives a title, real dates and a venue
+  with a postcode, needs no rendering, and does not break when a site
+  restyles. Paging follows the API's own `next_rest_url` rather than
+  guessing page numbers, and only events from today on are asked for.
+  `feedhunt` probes for it on any site.
+- **`domscan.deep_scan` answers "why are there no dates?"** — the three
+  explanations worth telling apart are a listing inside an iframe
+  (invisible to `page.content()`), one behind a search form, and one that
+  never arrives. `discover --url --browser --deep` prints iframes, forms
+  and repeated row-shaped blocks. The renderer also scrolls now: an NGS
+  page grew 130 KB under rendering and still had no dates, which is what
+  a lazy-loaded listing looks like when you never scroll. `python3 -m daysout_scraper.discover` probes
   every row and records what it found in `sources.last_status` — run from
   the deploy workflow, since the sandbox can't reach the sites.
 - **Events bring their venues**: a listing site names a venue we've never
