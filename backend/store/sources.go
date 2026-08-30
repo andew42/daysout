@@ -40,15 +40,16 @@ const UIAddedNote = "added via the web UI"
 // at yet.
 var SourceKinds = []string{"auto", "browser", "ical", "jsonld", "sitemap"}
 
-// refusedHosts answer automated clients with a challenge rather than
-// content. Rendering one in a browser would be working around an access
-// control the owner put there deliberately, so the UI declines to add
-// them at all rather than leaving a trap for whoever clicks Add. Their
-// properties reach the map through Wikidata instead.
+// refusedHosts are sites this form should not queue an attempt at. The
+// National Trust is already covered by a source written in code, which
+// reads a property's events page and stops if the site answers with a
+// bot-protection challenge; adding it here would either duplicate that or,
+// with the browser kind, point a renderer at a challenge — which would be
+// working around an access control rather than reading a page.
 var refusedHosts = map[string]string{
-	"nationaltrust.org.uk": "the National Trust site serves a bot-protection " +
-		"challenge to automated clients — we don't work around that. Their " +
-		"properties are already on the map, from Wikidata.",
+	"nationaltrust.org.uk": "National Trust events are already collected by " +
+		"the built-in source, and its properties come from Wikidata — there " +
+		"is nothing to add here.",
 }
 
 var nameCleanRe = regexp.MustCompile(`[^a-z0-9]+`)

@@ -52,10 +52,11 @@ func TestAddSourceRejectsWhatCannotBeScraped(t *testing.T) {
 		{"", "enter the address"},
 		{"not a url at all", "web address"},
 		{"ftp://files.example.com/list", "http"},
-		// A site that answers automated clients with a challenge is saying
-		// no; the UI must not quietly queue an attempt to work around it.
-		{"https://www.nationaltrust.org.uk/visit", "bot-protection"},
-		{"nationaltrust.org.uk", "bot-protection"},
+		// Already covered by a source written in code — and adding it with
+		// the browser kind would point a renderer at a site that answers
+		// automated clients with a challenge.
+		{"https://www.nationaltrust.org.uk/visit", "built-in source"},
+		{"nationaltrust.org.uk", "built-in source"},
 	}
 
 	for _, tc := range cases {

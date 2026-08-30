@@ -1,29 +1,59 @@
-"""End-to-end scraper tests against fixture pages — no network involved.
+"""End-to-end tests of the sitemap+JSON-LD engine, against fixture pages.
+
+These exercise the engine itself — crawl order, upserts, purging, bounded
+runs — so they use a fixture source rather than a real one. National Trust
+stood in here once, and changing what that source chooses to crawl broke a
+dozen tests that were never about National Trust.
 
 Run from scraper/:  python -m unittest discover tests
 """
 
+import re
 import sqlite3
 import unittest
 
 from daysout_scraper import db as dbmod
 from daysout_scraper.pipeline import run_source
-from daysout_scraper.sitemap_source import sitemap_urls
-from daysout_scraper.sources.national_trust import NationalTrust
+from daysout_scraper.sitemap_source import SitemapJsonLdSource, sitemap_urls
 
 from schema import SCHEMA  # the Go server's schema, read from source
 
+class FixtureSource(SitemapJsonLdSource):
+    """The classic shape: a page per property, and event pages beneath it."""
+
+    name = "fixture"
+    sitemaps = ("https://houses.example.org/sitemap.xml",)
+
+    PLACE_RE = re.compile(r"^https://houses\.example\.org/visit/[^/]+/([^/]+)/?$")
+    EVENT_RE = re.compile(r"^https://houses\.example\.org/visit/[^/]+/([^/]+)/events/[^/]+/?$")
+
+    def classify(self, url):
+        if self.PLACE_RE.match(url):
+            return "place"
+        if self.EVENT_RE.match(url):
+            return "event"
+        return None
+
+    def category(self, place):
+        text = place["name"] + " " + place["description"]
+        return "garden" if "garden" in text.lower() else "historic-house"
+
+    def link_event(self, event):
+        match = self.EVENT_RE.match(event.get("page_url", ""))
+        return match.group(1) if match else None
+
+
 SITEMAP = """<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://www.nationaltrust.org.uk/visit/wiltshire/stourhead</loc></url>
-  <url><loc>https://www.nationaltrust.org.uk/visit/wiltshire/stourhead/events/garden-walk</loc></url>
-  <url><loc>https://www.nationaltrust.org.uk/some/other/page</loc></url>
+  <url><loc>https://houses.example.org/visit/wiltshire/stourhead</loc></url>
+  <url><loc>https://houses.example.org/visit/wiltshire/stourhead/events/garden-walk</loc></url>
+  <url><loc>https://houses.example.org/some/other/page</loc></url>
 </urlset>"""
 
 PLACE_PAGE = """<html><head><script type="application/ld+json">
 {"@context": "https://schema.org", "@type": "TouristAttraction",
  "name": "Stourhead", "description": "Landscape garden and Palladian house",
- "url": "https://www.nationaltrust.org.uk/visit/wiltshire/stourhead",
+ "url": "https://houses.example.org/visit/wiltshire/stourhead",
  "geo": {"@type": "GeoCoordinates", "latitude": 51.1054, "longitude": -2.3187},
  "address": {"@type": "PostalAddress", "postalCode": "BA12 6QF"}}
 </script></head><body></body></html>"""
@@ -46,9 +76,9 @@ class FakeFetcher:
 
 def fixture_fetcher():
     return FakeFetcher({
-        "https://www.nationaltrust.org.uk/sitemap.xml": SITEMAP,
-        "https://www.nationaltrust.org.uk/visit/wiltshire/stourhead": PLACE_PAGE,
-        "https://www.nationaltrust.org.uk/visit/wiltshire/stourhead/events/garden-walk": EVENT_PAGE,
+        "https://houses.example.org/sitemap.xml": SITEMAP,
+        "https://houses.example.org/visit/wiltshire/stourhead": PLACE_PAGE,
+        "https://houses.example.org/visit/wiltshire/stourhead/events/garden-walk": EVENT_PAGE,
     })
 
 
@@ -59,7 +89,7 @@ class ScraperTest(unittest.TestCase):
         self.db.executescript(SCHEMA)
 
     def test_full_run(self):
-        ok, message = run_source(self.db, fixture_fetcher(), NationalTrust())
+        ok, message = run_source(self.db, fixture_fetcher(), FixtureSource())
         self.assertTrue(ok, message)
 
         row = self.db.execute(
@@ -78,22 +108,22 @@ class ScraperTest(unittest.TestCase):
         self.assertEqual(run[0], 1)
 
     def test_rerun_updates_not_duplicates(self):
-        run_source(self.db, fixture_fetcher(), NationalTrust())
-        run_source(self.db, fixture_fetcher(), NationalTrust())
+        run_source(self.db, fixture_fetcher(), FixtureSource())
+        run_source(self.db, fixture_fetcher(), FixtureSource())
         self.assertEqual(
             self.db.execute("SELECT COUNT(*) FROM destinations").fetchone()[0], 1)
         self.assertEqual(
             self.db.execute("SELECT COUNT(*) FROM events").fetchone()[0], 1)
 
     def test_stale_rows_purged(self):
-        run_source(self.db, fixture_fetcher(), NationalTrust())
+        run_source(self.db, fixture_fetcher(), FixtureSource())
 
         # Next run the event page has vanished from the sitemap.
         fetcher = fixture_fetcher()
-        fetcher.pages["https://www.nationaltrust.org.uk/sitemap.xml"] = \
+        fetcher.pages["https://houses.example.org/sitemap.xml"] = \
             SITEMAP.replace(
-                "<url><loc>https://www.nationaltrust.org.uk/visit/wiltshire/stourhead/events/garden-walk</loc></url>", "")
-        run_source(self.db, fetcher, NationalTrust())
+                "<url><loc>https://houses.example.org/visit/wiltshire/stourhead/events/garden-walk</loc></url>", "")
+        run_source(self.db, fetcher, FixtureSource())
 
         self.assertEqual(
             self.db.execute("SELECT COUNT(*) FROM destinations").fetchone()[0], 1)
@@ -101,13 +131,13 @@ class ScraperTest(unittest.TestCase):
             self.db.execute("SELECT COUNT(*) FROM events").fetchone()[0], 0)
 
     def test_unreachable_sitemap_purges_nothing(self):
-        run_source(self.db, fixture_fetcher(), NationalTrust())
+        run_source(self.db, fixture_fetcher(), FixtureSource())
 
         class DeadFetcher:
             def get(self, url):
                 raise OSError("network unreachable")
 
-        ok, _ = run_source(self.db, DeadFetcher(), NationalTrust())
+        ok, _ = run_source(self.db, DeadFetcher(), FixtureSource())
         self.assertFalse(ok)
         # Everything from the good run survives the failed one.
         self.assertEqual(
@@ -119,11 +149,11 @@ class ScraperTest(unittest.TestCase):
         """A stale page first in the sitemap must not crowd out a current one."""
         sitemap = """<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://www.nationaltrust.org.uk/visit/wiltshire/stourhead/events/old-fete</loc>
+  <url><loc>https://houses.example.org/visit/wiltshire/stourhead/events/old-fete</loc>
        <lastmod>2024-05-01</lastmod></url>
-  <url><loc>https://www.nationaltrust.org.uk/visit/wiltshire/stourhead/events/garden-walk</loc>
+  <url><loc>https://houses.example.org/visit/wiltshire/stourhead/events/garden-walk</loc>
        <lastmod>2026-08-27</lastmod></url>
-  <url><loc>https://www.nationaltrust.org.uk/visit/wiltshire/stourhead</loc>
+  <url><loc>https://houses.example.org/visit/wiltshire/stourhead</loc>
        <lastmod>2026-08-27</lastmod></url>
 </urlset>"""
         stale_page = """<html><head><script type="application/ld+json">
@@ -131,14 +161,14 @@ class ScraperTest(unittest.TestCase):
         </script></head><body></body></html>"""
 
         fetcher = FakeFetcher({
-            "https://www.nationaltrust.org.uk/sitemap.xml": sitemap,
-            "https://www.nationaltrust.org.uk/visit/wiltshire/stourhead": PLACE_PAGE,
-            "https://www.nationaltrust.org.uk/visit/wiltshire/stourhead/events/garden-walk": EVENT_PAGE,
-            "https://www.nationaltrust.org.uk/visit/wiltshire/stourhead/events/old-fete": stale_page,
+            "https://houses.example.org/sitemap.xml": sitemap,
+            "https://houses.example.org/visit/wiltshire/stourhead": PLACE_PAGE,
+            "https://houses.example.org/visit/wiltshire/stourhead/events/garden-walk": EVENT_PAGE,
+            "https://houses.example.org/visit/wiltshire/stourhead/events/old-fete": stale_page,
         })
 
         # Only one event page may be fetched: it must be the current one.
-        ok, message = run_source(self.db, fetcher, NationalTrust(), max_pages=1)
+        ok, message = run_source(self.db, fetcher, FixtureSource(), max_pages=1)
         self.assertTrue(ok, message)
         titles = [r[0] for r in self.db.execute("SELECT title FROM events")]
         self.assertEqual(titles, ["Guided garden walk"])
@@ -146,11 +176,11 @@ class ScraperTest(unittest.TestCase):
     def test_sitemap_lastmod_orders_newest_first(self):
         sitemap = """<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://www.nationaltrust.org.uk/visit/a/stale</loc>
+  <url><loc>https://houses.example.org/visit/a/stale</loc>
        <lastmod>2024-01-02</lastmod></url>
-  <url><loc>https://www.nationaltrust.org.uk/visit/b/current</loc>
+  <url><loc>https://houses.example.org/visit/b/current</loc>
        <lastmod>2026-08-01</lastmod></url>
-  <url><loc>https://www.nationaltrust.org.uk/visit/c/undated</loc></url>
+  <url><loc>https://houses.example.org/visit/c/undated</loc></url>
 </urlset>"""
 
         class F:
@@ -159,25 +189,25 @@ class ScraperTest(unittest.TestCase):
 
         pairs = list(sitemap_urls(F(), "s", with_lastmod=True))
         self.assertEqual(len(pairs), 3)
-        self.assertEqual(dict(pairs)["https://www.nationaltrust.org.uk/visit/b/current"],
+        self.assertEqual(dict(pairs)["https://houses.example.org/visit/b/current"],
                          "2026-08-01")
-        self.assertEqual(dict(pairs)["https://www.nationaltrust.org.uk/visit/c/undated"], "")
+        self.assertEqual(dict(pairs)["https://houses.example.org/visit/c/undated"], "")
 
         # The inspector keys on (lastmod, url) so a reverse sort is
         # newest-first; keyed the other way it would sort by URL instead.
         candidates = sorted(((mod, url) for url, mod in pairs), reverse=True)
         self.assertEqual(candidates[0][1],
-                         "https://www.nationaltrust.org.uk/visit/b/current")
+                         "https://houses.example.org/visit/b/current")
 
     def test_seed_purged_after_real_data(self):
         self.db.execute(
             "INSERT INTO destinations (name, category, lat, lon, source, source_id,"
             " first_seen, last_seen) VALUES ('Demo', 'garden', 1, 1, 'seed', 'demo',"
             " '2026-01-01', '2026-01-01')")
-        run_source(self.db, fixture_fetcher(), NationalTrust())
+        run_source(self.db, fixture_fetcher(), FixtureSource())
         dbmod.purge_seed(self.db)
         remaining = self.db.execute("SELECT source FROM destinations").fetchall()
-        self.assertEqual(remaining, [("national_trust",)])
+        self.assertEqual(remaining, [("fixture",)])
 
 
 if __name__ == "__main__":

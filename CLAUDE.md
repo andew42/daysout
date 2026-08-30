@@ -53,10 +53,21 @@ daysout/
   engine in `sitemap_source.py`/`jsonld.py`) for their own properties and
   events. Politeness: robots.txt, 1 req/s/host, honest UA, 20h on-disk
   cache. Each source run is logged to `scrape_runs`.
-- **National Trust scraping is disabled and must stay that way**: their
-  site serves a Radware bot-protection challenge instead of content. We do
-  not disguise the scraper or solve the challenge — NT properties come
-  from Wikidata instead. See `sources/national_trust.py`.
+- **National Trust: events only, and it stops when told no.** Each
+  property publishes an events page
+  (`/visit/<region>/<property>/events`), which robots.txt permits and
+  which the old patterns missed entirely — they matched only
+  `<property>/events/<slug>`. Both shapes are now read. Property pages are
+  deliberately *not* crawled: Wikidata already supplies the properties, and
+  the engine visits places before events, so crawling them would spend the
+  run's first requests on the pages most likely to be challenged before
+  reaching any event. `looks_like_a_challenge()` detects a bot-protection
+  interstitial and sets `blocked`, which stops the run after one page. We
+  still never work around a challenge — no disguised User-Agent, no
+  solving it, no rotating identities; the point of detecting it is to stop
+  and say so rather than collect hundreds of refusals and report an empty
+  site. NT event ids are `<property>-<title>-<start date>` so an event
+  found on both the listing and its own page is one row.
 - **Bounded runs never purge**: `--max-pages` runs (verification deploys)
   set `partial` and skip `purge_stale`, because a run that only looked at
   part of a source knows nothing about the rest.
@@ -83,9 +94,11 @@ daysout/
   Fetcher, so robots.txt, the rate limit and the cache all still apply;
   rendered pages cache under a separate key.
 - **Rendering is not for getting past a refusal.** A site that answers with
-  a bot-protection challenge (National Trust) is saying no, and a browser
-  that defeats the challenge would be evading an access control rather than
-  reading a page. NT must never be given kind='browser'.
+  a bot-protection challenge is saying no, and a browser that defeats the
+  challenge would be evading an access control rather than reading a page.
+  National Trust must never be given kind='browser'; `refusedHosts` in
+  `backend/store/sources.go` keeps it out of the Sources tab, and the code
+  source stops rather than pushes on.
 - **Sources live in the database**, not only in code: the `sources` table
   holds (name, url, kind, category, enabled). `sources/feeds.py` turns a
   row into a runnable source, so adding a listing site is an INSERT — which

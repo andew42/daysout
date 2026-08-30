@@ -20,10 +20,14 @@ and English Heritage properties, gardens, aviation museums); English
 Heritage's own site is crawled via its sitemap for schema.org JSON-LD.
 Both feed the same destinations and events tables.
 
-National Trust's website is deliberately **not** scraped: it serves a
-bot-protection challenge to automated clients, and working around that
-would mean circumventing an access control the owner put there on
-purpose. Their properties reach the map via Wikidata instead.
+National Trust contributes **events** — each property publishes an events
+page (`/visit/<region>/<property>/events`) that robots.txt permits — while
+its properties keep coming from Wikidata. That site has answered automated
+clients with a bot-protection challenge before, so the source watches for
+one and stops the run when it sees it. Working around a challenge (a
+disguised User-Agent, solving it, rotating identities) would be
+circumventing an access control the owner put there on purpose, and is not
+something this scraper does.
 
 ### Which event sources actually work
 
@@ -39,6 +43,7 @@ result is worth knowing before adding more:
 | Source | Result |
 |--------|--------|
 | English Heritage | **Works** — 392 properties, ~119 events, Event JSON-LD per page |
+| National Trust | Events only, one listing page per property; stops if the site answers with a challenge |
 | RHS | **Works** — five flower shows; they publish a postcode with no venue name, so the venue is created from it |
 | NGS (open gardens, garden finder) | Sitemap only. Rendering the "open this week" page doubles it (110k → 240k bytes) but it is a hub: no dates, just a link per region |
 | Historic Houses, Invitation to View | Sitemap only — WebPage/Article JSON-LD, no events |
@@ -51,9 +56,10 @@ Most of those "sitemap only" sites build their listings in the browser, so
 a **browser scanner** (source kind `browser`) now renders the page in
 headless Chromium before reading it — which is what a visitor's browser
 does, and nothing more. It is deliberately not used on National Trust:
-that site refuses automated clients outright, and rendering past a
-bot-protection challenge would be evading an access control rather than
-reading a page.
+where that site answers with a bot-protection challenge, rendering past it
+would be evading an access control rather than reading a page — so the
+National Trust source stops instead, and the Sources tab won't let you
+point a renderer at it.
 
 Browser automation is optional. Without Playwright installed those sources
 are skipped with a warning and everything else runs as before:
