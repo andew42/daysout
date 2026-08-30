@@ -26,6 +26,7 @@ import logging
 import os
 import re
 import sys
+import xml.etree.ElementTree as ElementTree
 from collections import Counter
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -165,7 +166,8 @@ def probe_conventional_feeds(fetcher, base):
         if head.startswith("BEGIN:VCALENDAR"):
             print(f"    {url}\n        FOUND: iCal, {len(body)} bytes")
         elif head.startswith("<?xml") or "<rss" in head[:100].lower():
-            print(f"    {url}\n        FOUND: XML/RSS, {len(body)} bytes — {head[:100]}")
+            print(f"    {url}\n        FOUND: XML/RSS, {len(body)} bytes")
+            describe_feed_items(body)
         else:
             # Served, but HTML. A site that has no feed at this path
             # usually answers with its ordinary 404 page, and calling that
@@ -222,6 +224,38 @@ def _text(value):
     if isinstance(value, dict):
         value = value.get("rendered", "")
     return str(value or "")
+
+
+def describe_feed_items(body, limit=3):
+    """What is in an RSS item — and crucially, is there a date to use?
+
+    A feed is only worth reading if its items carry the event's date.
+    Many carry the date the post was published instead, which tells a
+    planner nothing, so print the fields rather than assuming.
+    """
+
+    try:
+        root = ElementTree.fromstring(body.encode("utf-8", "replace"))
+    except ElementTree.ParseError as e:
+        print(f"          (could not parse: {e})")
+        return
+
+    items = root.iter("item") if root.tag != "feed" else root.iter(
+        "{http://www.w3.org/2005/Atom}entry")
+    for index, item in enumerate(items):
+        if index >= limit:
+            break
+        fields = {}
+        for child in item:
+            tag = child.tag.split("}")[-1]
+            text = " ".join((child.text or "").split())
+            if text and tag not in fields:
+                fields[tag] = text[:110]
+        print(f"          item {index + 1}: " + " | ".join(
+            f"{tag}={text}" for tag, text in list(fields.items())[:6]))
+        if index == 0:
+            dated = [t for t in fields if "date" in t.lower() or t == "published"]
+            print(f"          date-ish fields: {', '.join(dated) or 'NONE'}")
 
 
 def main():

@@ -112,6 +112,9 @@ def main():
     parser.add_argument("--browser", action="store_true",
                         help="render the URL in a headless browser before "
                              "probing, for client-side-rendered listings")
+    parser.add_argument("--fresh", action="store_true",
+                        help="ignore the page cache: a cached copy cannot "
+                             "show whether a change to the renderer worked")
     parser.add_argument("--deep", action="store_true",
                         help="when a page carries no dates, report what it "
                              "does carry: iframes, search forms, and any "
@@ -142,10 +145,11 @@ def main():
             with browser.Renderer(USER_AGENT) as renderer:
                 fetcher.renderer = renderer
                 print(describe(probe(fetcher, args.url, render=True)))
-                inspect_dom(fetcher, args.url, rendered=True, deep=args.deep)
+                inspect_dom(fetcher, args.url, rendered=True, deep=args.deep,
+                            fresh=args.fresh)
             return
         print(describe(probe(fetcher, args.url)))
-        inspect_dom(fetcher, args.url, deep=args.deep)
+        inspect_dom(fetcher, args.url, deep=args.deep, fresh=args.fresh)
         return
 
     added = seed_sources.ensure(db)
@@ -177,7 +181,7 @@ def main():
     print(f"{usable}/{len(rows)} source(s) publish something machine-readable")
 
 
-def inspect_dom(fetcher, url, rendered=False, deep=False):
+def inspect_dom(fetcher, url, rendered=False, deep=False, fresh=False):
     """Print what a hand-written parser would have to work with.
 
     A source that publishes no Event JSON-LD is not automatically a dead
@@ -191,7 +195,7 @@ def inspect_dom(fetcher, url, rendered=False, deep=False):
     from . import domscan
 
     try:
-        plain = domscan.scan(fetcher.get(url), url)
+        plain = domscan.scan(fetcher.get(url, fresh=fresh), url)
     except Exception as e:  # noqa: BLE001 — a diagnostic never fails the caller
         print(f"    DOM scan failed: {e}")
         return
@@ -202,7 +206,8 @@ def inspect_dom(fetcher, url, rendered=False, deep=False):
     rendered_report = None
     if rendered:
         try:
-            rendered_report = domscan.scan(fetcher.get(url, render=True), url)
+            rendered_report = domscan.scan(
+                fetcher.get(url, render=True, fresh=fresh), url)
         except Exception as e:  # noqa: BLE001
             print(f"    rendered DOM scan failed: {e}")
         else:
@@ -216,7 +221,7 @@ def inspect_dom(fetcher, url, rendered=False, deep=False):
         # the rendered page if we have one — an un-rendered shell explains
         # nothing.
         try:
-            body = fetcher.get(url, render=rendered)
+            body = fetcher.get(url, render=rendered, fresh=fresh)
             print("    --- what IS on the page")
             print(domscan.describe_deep(domscan.deep_scan(body), indent="      "))
         except Exception as e:  # noqa: BLE001

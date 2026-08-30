@@ -69,6 +69,31 @@ SETTLE_MS = 2500
 SCROLL_STEPS = 8
 SCROLL_SETTLE_MS = 800
 
+# A consent banner is shown to every visitor, and dismissing it is what a
+# visitor does — it governs cookies, not access to the content. It matters
+# here because consent managers hold back the scripts that draw a listing
+# until a choice is made: a National Garden Scheme page rendered to 250 KB
+# of which 130 KB was Cookiebot's own cookie tables, and no gardens.
+#
+# Declining is tried before accepting. Content usually loads on either
+# choice, and refusing cookies we have no use for is the better default
+# than accepting tracking on a site we are only reading.
+CONSENT_SELECTORS = (
+    # Cookiebot — decline first, then accept.
+    "#CybotCookiebotDialogBodyButtonDecline",
+    "#CybotCookiebotDialogBodyLevelButtonLevelOptinDeclineAll",
+    "#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll",
+    "#CybotCookiebotDialogBodyButtonAccept",
+    # OneTrust, Civic, and the common aria labels.
+    "#onetrust-reject-all-handler",
+    "#onetrust-accept-btn-handler",
+    "#ccc-reject-settings",
+    "#ccc-recommended-settings",
+    "[aria-label='Reject all cookies']",
+    "[aria-label='Accept all cookies']",
+)
+CONSENT_TIMEOUT_MS = 2000
+
 
 class BrowserUnavailable(Exception):
     """Playwright or its browser isn't installed."""
@@ -138,10 +163,29 @@ class Renderer:
             # networkidle is unreliable on pages with polling or analytics,
             # so wait a fixed moment for the listing to populate instead.
             page.wait_for_timeout(SETTLE_MS)
+            if self._dismiss_consent(page):
+                # Scripts held back by the consent manager start now.
+                page.wait_for_timeout(SETTLE_MS)
             self._scroll_through(page)
             return page.content()
         finally:
             page.close()
+
+    def _dismiss_consent(self, page):
+        """Answer a cookie banner, as a visitor would. True if one was there."""
+
+        for selector in CONSENT_SELECTORS:
+            try:
+                button = page.locator(selector).first
+                if button.count() == 0 or not button.is_visible():
+                    continue
+                button.click(timeout=CONSENT_TIMEOUT_MS)
+            except Exception as e:  # noqa: BLE001 — no banner, or it moved
+                log.debug("consent %s on %s: %s", selector, page.url, e)
+                continue
+            log.info("dismissed a cookie banner via %s", selector)
+            return True
+        return False
 
     def _scroll_through(self, page):
         """Scroll to the bottom in steps, waiting for content to arrive.

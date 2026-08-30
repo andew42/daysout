@@ -142,9 +142,20 @@ daysout/
   explanations worth telling apart are a listing inside an iframe
   (invisible to `page.content()`), one behind a search form, and one that
   never arrives. `discover --url --browser --deep` prints iframes, forms
-  and repeated row-shaped blocks. The renderer also scrolls now: an NGS
-  page grew 130 KB under rendering and still had no dates, which is what
-  a lazy-loaded listing looks like when you never scroll. `python3 -m daysout_scraper.discover` probes
+  and repeated row-shaped blocks. That diagnostic answered the NGS case:
+  the 130 KB rendering added was **Cookiebot's own cookie tables** — 94,
+  75, 75, 74 repeated `CybotCookiebot*` blocks — and no gardens at all.
+- **The renderer answers cookie banners and scrolls.** A consent manager
+  holds back the scripts that draw a listing until a choice is made, and a
+  banner governs cookies rather than access, so answering one is what
+  every visitor does; `CONSENT_SELECTORS` tries *decline* before accept.
+  Scrolling follows, for listings that arrive as you go. Both are covered
+  by `tests/test_consent.py`, which drives a real browser.
+- **`fetcher.get(fresh=True)` skips reading the cache.** The first
+  deploy of the scrolling change proved nothing: the render came from the
+  20-hour cache and the byte counts came back identical, which looked like
+  evidence and was not. Diagnostics that test the renderer must pass
+  `--fresh`. `python3 -m daysout_scraper.discover` probes
   every row and records what it found in `sources.last_status` — run from
   the deploy workflow, since the sandbox can't reach the sites.
 - **Events bring their venues**: a listing site names a venue we've never

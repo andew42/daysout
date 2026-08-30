@@ -255,9 +255,12 @@ jobs:
         continue-on-error: true
         run: |
           cd /opt/daysout/scraper
+          # --fresh matters: the last run read a cached render, so the
+          # scrolling change was never exercised and the byte counts came
+          # back identical, which looked like evidence and was not.
           sudo env DAYSOUT_DATA=/var/lib/daysout python3 -m daysout_scraper.discover \
             --url https://ngs.org.uk/gardens-open-this-week-midlands/ \
-            --browser --deep || true
+            --browser --deep --fresh || true
 
       - name: Hunt for a sanctioned route into National Trust events
         # The pages are closed to us and we do not work around that, so

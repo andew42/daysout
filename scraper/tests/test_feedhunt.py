@@ -134,3 +134,29 @@ class TestFeedProbes(unittest.TestCase):
                          "https://example.org/")
         self.assertIn("bot-protection challenge", output)
         self.assertNotIn("FOUND", output)
+
+
+class TestFeedItems(unittest.TestCase):
+    """A feed is only worth reading if its items carry the event's date."""
+
+    RSS = """<?xml version="1.0"?><rss version="2.0"><channel>
+      <title>Open Houses</title>
+      <item><title>Fitzherbert Studio open weekend</title>
+            <link>https://aoh.example/fitzherbert</link>
+            <pubDate>Mon, 04 Aug 2026 09:00:00 +0000</pubDate>
+            <description>Open 5-6 September, 11am to 5pm</description></item>
+      <item><title>Beach Hut Artists</title>
+            <link>https://aoh.example/beach-hut</link>
+            <pubDate>Tue, 05 Aug 2026 09:00:00 +0000</pubDate></item>
+    </channel></rss>"""
+
+    def test_item_fields_are_shown_so_dates_can_be_judged(self):
+        output = capture(feedhunt.describe_feed_items, self.RSS)
+        self.assertIn("Fitzherbert Studio open weekend", output)
+        # pubDate is when the post went up, not when the event runs — the
+        # difference is the whole question, so name the date-ish fields.
+        self.assertIn("date-ish fields: pubDate", output)
+
+    def test_a_broken_feed_says_so_rather_than_crashing(self):
+        output = capture(feedhunt.describe_feed_items, "not xml at all")
+        self.assertIn("could not parse", output)

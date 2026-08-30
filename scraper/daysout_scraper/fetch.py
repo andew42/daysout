@@ -60,7 +60,7 @@ class Fetcher:
             time.sleep(REQUEST_INTERVAL_SECONDS - elapsed)
         self._last_request[host] = time.monotonic()
 
-    def get(self, url, api=False, render=False):
+    def get(self, url, api=False, render=False, fresh=False):
         """Fetch a URL as text, honouring robots.txt, the rate limit and the
         cache. Raises FetchDisallowed / requests exceptions on failure.
 
@@ -69,6 +69,9 @@ class Fetcher:
         are cached separately because they return different content. It
         does not relax any check: robots.txt is still consulted and the
         rate limit still applies.
+
+        fresh=True skips *reading* the cache, for diagnostics that need to
+        see what the site returns now rather than what it returned earlier.
 
         api=True is for a documented API endpoint the operator publishes for
         programmatic use. robots.txt governs crawling a site's pages — a
@@ -81,7 +84,12 @@ class Fetcher:
         """
         cache_key = ("render:" if render else "") + url
         cache_file = self.cache_dir / hashlib.sha256(cache_key.encode()).hexdigest()
-        if cache_file.exists() and time.time() - cache_file.stat().st_mtime < CACHE_TTL_SECONDS:
+        # fresh=True is for diagnostics: a cached page cannot tell you
+        # whether a change to the renderer worked, and reading a stale copy
+        # while believing otherwise is worse than not looking. It still
+        # writes to the cache, so the next ordinary fetch benefits.
+        if (not fresh and cache_file.exists()
+                and time.time() - cache_file.stat().st_mtime < CACHE_TTL_SECONDS):
             return cache_file.read_text(encoding="utf-8")
 
         if not api and not self._allowed(url):
