@@ -211,6 +211,26 @@ def ensure_venue(db, source, name, postcode, category="venue", url=""):
     return name
 
 
+def backfill_venue_url(db, destination_id, url):
+    """Give a venue we already hold a link, when it has none.
+
+    ensure_venue runs only when a venue has to be created, so it never
+    sees the venues we already hold — which, after the first scrape, is
+    all of them. Adding the link there alone changed nothing on the map:
+    the pins that lacked a link were exactly the ones that path skips.
+
+    Only ever fills a blank, so a link a source published for itself is
+    never replaced by one inferred from an event.
+    """
+    root = site_root(url)
+    if not destination_id or not root:
+        return False
+    cursor = db.execute(
+        "UPDATE destinations SET url = ? WHERE id = ? AND url = ''",
+        (root, destination_id))
+    return cursor.rowcount > 0
+
+
 def site_root(url):
     """The site an event page belongs to: "https://host/".
 

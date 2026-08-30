@@ -168,3 +168,56 @@ class TestVenueLink(unittest.TestCase):
         self.assertEqual(self.venue_url(), "")
         self.run_with("https://www.stonor.com/whats-on/garden-tour-5-sept/")
         self.assertEqual(self.venue_url(), "https://www.stonor.com/")
+
+
+class TestExistingVenueGainsALink(unittest.TestCase):
+    """The case the tests above missed, and the site showed.
+
+    Those events name no venue, so they fall back into ensure_venue every
+    run and the link fix appeared to work. A named venue is found by the
+    resolver instead, ensure_venue is never reached, and the pin stayed
+    bare — which is every venue we already hold, i.e. all of them after
+    the first scrape.
+    """
+
+    def setUp(self):
+        self.db = open_db()
+
+    def event(self, url):
+        return ("event", {
+            "source_id": "e1",
+            "title": "Garden tour",
+            "start_date": "2026-09-05",
+            "end_date": "2026-09-05",
+            "url": url,
+            "location_name": "Stonor Park",
+            "location_postcode": "M2 5PD",
+        })
+
+    def venue_url(self):
+        return self.db.execute(
+            "SELECT url FROM destinations WHERE name = 'Stonor Park'").fetchone()[0]
+
+    def test_a_named_venue_we_already_hold_gains_a_link(self):
+        # First run creates it with no link, as earlier scrapes did.
+        pipeline.run_source(self.db, None, FakeSource([self.event("")]))
+        self.assertEqual(self.venue_url(), "")
+
+        # Second run resolves the venue by name, so ensure_venue is never
+        # called; the link has to be filled in on that path too.
+        pipeline.run_source(
+            self.db, None,
+            FakeSource([self.event("https://www.stonor.com/whats-on/tour/")]))
+        self.assertEqual(self.venue_url(), "https://www.stonor.com/")
+
+    def test_a_link_the_source_published_is_not_overwritten(self):
+        pipeline.run_source(
+            self.db, None,
+            FakeSource([self.event("https://www.stonor.com/whats-on/tour/")]))
+        self.db.execute(
+            "UPDATE destinations SET url = 'https://stonor.example/official'"
+            " WHERE name = 'Stonor Park'")
+        pipeline.run_source(
+            self.db, None,
+            FakeSource([self.event("https://www.stonor.com/whats-on/other/")]))
+        self.assertEqual(self.venue_url(), "https://stonor.example/official")

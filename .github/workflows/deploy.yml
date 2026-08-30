@@ -46,14 +46,27 @@ jobs:
           import json, sys
           body = json.load(sys.stdin)
           print('sources listed:', len(body['sources']), '| kinds:', ','.join(body['kinds']))"
-          # The Test now button runs the scraper for one source. Check the
-          # route answers and refuses an unknown name; testing a real
+          # The Update button runs the scraper for one source. Check the
+          # route answers and refuses an unknown name; updating a real
           # source here would just duplicate the scrape step below.
-          curl -s -o /tmp/test-source.json -w "test endpoint: %{http_code}\n" \
+          #
+          # Assert the refusal, not just "it responded": an unknown API
+          # path falls through to the SPA handler and comes back as 200
+          # HTML, so this check went on passing for a deploy after the
+          # route was renamed from /test to /update while hitting nothing.
+          CODE=$(curl -s -o /tmp/update-source.json -w '%{http_code}' \
             -X POST -H 'Content-Type: application/json' \
             -d '{"name":"definitely-not-a-source"}' \
-            http://localhost:8080/api/sources/test
-          cat /tmp/test-source.json; echo
+            http://localhost:8080/api/sources/update)
+          echo "update endpoint: $CODE"
+          cat /tmp/update-source.json; echo
+          python3 -c "
+          import json, sys
+          code = '$CODE'
+          assert code == '400', f'expected 400 for an unknown source, got {code}'
+          body = json.load(open('/tmp/update-source.json'))
+          assert 'no source named' in body.get('error', ''), body
+          print('OK: /api/sources/update refuses an unknown source')" 
           python3 -c "
           import json
           s = json.load(open('/tmp/status.json'))
@@ -317,6 +330,53 @@ jobs:
           sudo env DAYSOUT_DATA=/var/lib/daysout \
             python3 -m daysout_scraper.inspect --source english_heritage \
               --kind event --newest --count 3 || true
+
+      - name: What the Events tab actually receives
+        # "No change" after a deploy has two very different causes: the
+        # server is not sending the new data, or the browser is showing an
+        # old bundle. Only the first is visible from here, so print it —
+        # the exact JSON the Events tab renders from, for the home
+        # postcode, plus the venue rows behind the map pins.
+        continue-on-error: true
+        run: |
+          HOME_POSTCODE="SN13 8AA"
+          echo "########## /api/events for $HOME_POSTCODE (60 min, 7 days)"
+          curl -sf --get http://localhost:8080/api/events \
+            --data-urlencode "postcode=$HOME_POSTCODE" \
+            --data-urlencode "minutes=60" --data-urlencode "days=7" \
+            -o /tmp/events.json
+          python3 -c "
+          import json
+          body = json.load(open('/tmp/events.json'))
+          print('shown:', len(body['events']), '| minutes:', body['minutes'],
+                '| days:', body['days'])
+          for e in body['events'][:8]:
+              d = e['destination']
+              print(f\"  {e['startDate']}..{e['endDate']}  {e['title']}\"
+                    f\"  @ {d['name']} ~{round(d['driveMinutes'])} min\")
+          x = body.get('excluded')
+          if x is None:
+              print('NO excluded key — the server is running an old build')
+          else:
+              print('excluded:', json.dumps(x))
+              if not any(x.get(k) for k in ('tooFar', 'later', 'wrongCategory')):
+                  print('  (all zero — the Events tab shows no note, correctly)')"
+
+          echo "########## venues behind the map pins (do they carry a link?)"
+          sudo python3 -c "
+          import sqlite3
+          db = sqlite3.connect('/var/lib/daysout/daysout.db')
+          rows = db.execute(
+              \"SELECT source, name, postcode, url, lat, lon FROM destinations\"
+              \" WHERE source NOT IN ('seed', 'wikidata', 'english_heritage')\"
+              ' ORDER BY source, name').fetchall()
+          print(len(rows), 'venue(s) created from events:')
+          for source, name, postcode, url, lat, lon in rows:
+              print(f'  [{source}] {name} | {postcode or \"no postcode\"} |'
+                    f' {url or \"NO LINK\"} | {lat},{lon}')
+          missing = [r for r in rows if not r[3]]
+          if missing:
+              print('WARNING:', len(missing), 'venue(s) still have no url')"
 
       - name: Result summary
         run: |

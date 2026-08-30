@@ -120,6 +120,9 @@ def run_source(db, fetcher, source, max_pages=0):
                     f"{'postcode ' + venue_postcode if venue_postcode else '(no postcode)'}")
                 continue
             dbmod.touch_destination(db, destination_id, source.name)
+            # Every event, not just ones that create their venue: the
+            # venues that need a link are the ones we already hold.
+            dbmod.backfill_venue_url(db, destination_id, event.get("url", ""))
             if dbmod.upsert_event(db, source.name, event, destination_id):
                 linked += 1
 
