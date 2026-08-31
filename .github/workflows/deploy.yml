@@ -289,37 +289,46 @@ jobs:
 
       - name: What UK Craft Fairs actually serves
         # Settled on the house server 31 Aug 2026, and not worth asking
-        # again: every plain fetch of this host times out. The server sends
-        # a malformed header block — "Strict Transport Security:" with
-        # spaces where the hyphens belong — so http.client never finds the
-        # separator between headers and body and the read hangs until the
-        # timeout, though the response carries a good Content-Length (14756
-        # for /calendar). That killed robots.txt, both sitemap paths, all
-        # four wp-json routes and all nine conventional feed paths: nine of
-        # the last run's eleven minutes spent proving the same thing
-        # thirteen times over. So this step no longer asks.
+        # again: every plain fetch of this host times out. The response's
+        # header block carries "Strict Transport Security:" — spaces where
+        # the hyphens belong — which is not a legal header name, so
+        # http.client never finds the blank line before the body and the
+        # read hangs, though Content-Length: 14756 sits in the same block.
+        # That took out robots.txt, both sitemap paths, four wp-json routes
+        # and nine feed paths, so there is no feed, no API and no crawlable
+        # sitemap here as far as we can ever tell.
         #
-        # The renderer does work — Chromium is lenient about the bad header
-        # and returns 40,061 bytes. The site is not refusing us: there is no
-        # challenge, just a broken server. But the rendered page carries no
-        # Event JSON-LD, which is exactly why kind='browser' contributes
-        # nothing, that kind reading structured data and this page having
-        # none. So a hand-written DOM parser is the only route left, and
-        # this step gathers what one needs to be written against.
+        # It is a broken server rather than a refusal: Chromium renders the
+        # page in full (40,061 bytes) and looks_like_a_challenge is false.
+        # The rendered page carries no Event JSON-LD, which is why
+        # kind='browser' yields nothing, so a DOM parser is the only route.
         #
-        # The open question is the page's shape. Its <title> and <h1> both
-        # read "Monday, 31 August 2026", so /calendar looks like a
-        # single-day view — in which case the date comes from the heading
-        # rather than from each row, and the parser needs whatever URL asks
-        # for another day. Hence the link dump.
+        # Round two answered the shape. /calendar is a single-day view
+        # ("Monday, 31 August 2026"), each fair is a .panel-list, and its
+        # .panel-body.panel-list-bottom holds
+        #   <p><strong>Venue</strong>, Town, County</p>
+        #   <p>Saturday, <strong>29 August 2026</strong> (3 day event)</p>
+        # — so the <strong> date is the fair's START and "(N day event)"
+        # gives its length, which is why 27 and 29 August appear on a page
+        # headed the 31st. Days are addressed as /calendar/1-september-2026,
+        # and each fair links to /craft-events/<id>/<slug>.
+        #
+        # Two things a parser still needs and this step asks for. The row
+        # markup quoted above is only the panel-body, so dump one whole
+        # .panel-list to find where the title lives — three rows carry it
+        # as an <img alt>, the fourth has only a "Craft Fair" badge, so the
+        # img is not it. And the row gives "Lowther Gardens, Lytham St
+        # Annes, Lancashire" with no postcode, which the pipeline needs to
+        # place an event at all: ask whether the event page has one.
         continue-on-error: true
         run: |
           cd /opt/daysout/scraper
           sudo env DAYSOUT_DATA=/var/lib/daysout python3 -c "
           import re, sys; sys.path.insert(0, '.')
+          from urllib.parse import urljoin
           from bs4 import BeautifulSoup
           from daysout_scraper.fetch import Fetcher
-          from daysout_scraper import browser, domscan
+          from daysout_scraper import browser, domscan, postcode as postcodes
           from daysout_scraper.sources.national_trust import looks_like_a_challenge
 
           URL = 'https://www.ukcraftfairs.com/calendar'
@@ -328,68 +337,66 @@ jobs:
               raise SystemExit(0)
 
           fetcher = Fetcher('/var/lib/daysout/scrape-cache')
-          # One fresh render, read by every scanner below. The last run let
-          # discover.inspect_dom do it, and its plain-fetch scan raised
-          # first, so the rendered half never printed at all.
+          # One renderer for both pages: the calendar and, below, the event
+          # page it links to. Relaunching Chromium per page costs a second
+          # each and the second render needs the same context anyway.
           with browser.Renderer(fetcher.session.headers['User-Agent']) as renderer:
               fetcher.renderer = renderer
               body = fetcher.get(URL, render=True, fresh=True)
-          soup = BeautifulSoup(body, 'html.parser')
-          print(len(body), 'bytes rendered | challenge:', looks_like_a_challenge(body))
+              soup = BeautifulSoup(body, 'html.parser')
+              print(len(body), 'bytes rendered | challenge:',
+                    looks_like_a_challenge(body))
 
-          print()
-          print('=== what a parser would have to work with')
-          print(domscan.describe(domscan.scan(body, URL)))
+              print()
+              print('=== what a parser would have to work with')
+              print(domscan.describe(domscan.scan(body, URL)))
 
-          print()
-          print('=== structure: where the fair rows are, if they are here')
-          print(domscan.describe_deep(domscan.deep_scan(body)))
-
-          print()
-          print('=== every link that might ask for another day')
-          DAY = re.compile(r'calendar|date|day|20[0-9][0-9]', re.I)
-          seen = set()
-          for anchor in soup.find_all('a', href=True):
-              href = anchor['href']
-              if not DAY.search(href) or href in seen:
-                  continue
-              seen.add(href)
-              print('   ', href[:110], ' <- ', anchor.get_text(' ', strip=True)[:50])
-              if len(seen) >= 30:
-                  break
-          if not seen:
-              print('    none — no other day is reachable by a link')
-
-          print()
-          print('=== where each date sits')
-          print(domscan.describe_date_context(domscan.date_context(body, limit=12)))
-
-          print()
-          print('=== the markup around each dated <strong>')
-          # 29 and 27 August appeared on a page headed 31 August, so these
-          # are not the day's fairs. Whatever they are, the surrounding
-          # markup says — and if they turn out to be event rows, that block
-          # is what a parser anchors on.
-          shown = 0
-          for element in soup.find_all('strong'):
-              text = element.get_text(' ', strip=True)
-              if not domscan.DATE_TEXT_RE.search(text):
-                  continue
-              # Climb to the first ancestor big enough to be a row, at
-              # most three levels. Testing the parent's size instead
-              # climbed to <html> on anything short.
-              block = element
-              for _ in range(3):
-                  if block.parent is None or len(block.get_text(' ', strip=True)) >= 60:
+              print()
+              print('=== every link that might ask for another day')
+              DAY = re.compile(r'calendar|craft-events', re.I)
+              seen = set()
+              for anchor in soup.find_all('a', href=True):
+                  href = anchor['href']
+                  if not DAY.search(href) or href in seen:
+                      continue
+                  seen.add(href)
+                  print('   ', href[:110], ' <- ',
+                        anchor.get_text(' ', strip=True)[:50])
+                  if len(seen) >= 25:
                       break
-                  block = block.parent
-              print('--- <strong>', text[:40])
-              print('   ', ' '.join(str(block)[:700].split()))
-              shown += 1
-              if shown >= 4:
-                  break
-          if not shown:
-              print('    no dated <strong> on this render')" || true
+
+              print()
+              print('=== one whole listing row, title element and all')
+              # The panel-body alone does not say where the title lives, and
+              # the row without an <img> has to get it from somewhere.
+              rows = soup.select('.panel-list')
+              print('   ', len(rows), '.panel-list block(s) on the page')
+              for row in rows[:2]:
+                  print('---')
+                  print('   ', ' '.join(str(row)[:2200].split()))
+
+              print()
+              print('=== an event page: does it carry a postcode?')
+              # Without one the pipeline cannot place the event and drops
+              # it, so this decides whether the source can work at all.
+              link = soup.select_one(\"a[href*='/craft-events/']\")
+              if link is None:
+                  print('    no /craft-events/ link to follow')
+              else:
+                  page_url = urljoin(URL, link['href'])
+                  page = fetcher.get(page_url, render=True, fresh=True)
+                  psoup = BeautifulSoup(page, 'html.parser')
+                  text = psoup.get_text(' ', strip=True)
+                  found = postcodes.find(text)
+                  print('   ', page_url)
+                  print('    bytes:', len(page), '| postcode:', found or '(NONE)')
+                  print('    JSON-LD:',
+                        domscan.scan(page, page_url)['jsonld_types'] or '(none)')
+                  if found:
+                      at = text.find(found)
+                      print('    context:', text[max(0, at - 220):at + 60])
+                  else:
+                      print('    address-ish text:', text[:400])" || true
 
       - name: Hunt for a sanctioned route into National Trust events
         # The pages are closed to us and we do not work around that, so
