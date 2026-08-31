@@ -330,6 +330,79 @@ jobs:
           if not rows:
               print('NONE PARSED — the row markup has changed, or the render failed')" || true
 
+      - name: What the IACF Newark iCal feed carries
+        # A .ics feed needs no parser of ours — ical.py reads it and the
+        # row's kind='ical' runs it — so the only open questions are about
+        # the data, and the sandbox cannot reach the site to ask.
+        #
+        # 1. Does the URL actually serve iCalendar? It is a query string
+        #    ("?feed=...") rather than a .ics path, so a site that has
+        #    dropped the feed would answer with an HTML page and the run
+        #    would just report nothing found.
+        # 2. Does its LOCATION carry the address? If it does, the row's
+        #    venue is never consulted.
+        # 3. Is the seeded fallback postcode right? NG24 2NY was written
+        #    from memory rather than measured, which is exactly the kind
+        #    of guess this file exists to settle. Geocode it and print the
+        #    coordinates: Newark Showground is near 53.08, -0.77, and a
+        #    postcode that resolves somewhere else entirely would put the
+        #    fair on the wrong part of the map without ever failing.
+        continue-on-error: true
+        run: |
+          cd /opt/daysout/scraper
+          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -c "
+          import sys; sys.path.insert(0, '.')
+          from daysout_scraper.fetch import Fetcher
+          from daysout_scraper import ical
+
+          URL = 'https://www.iacf.co.uk/?feed=iacf-newark-events-ical'
+          fetcher = Fetcher('/var/lib/daysout/scrape-cache')
+          print('robots.txt allows it:', fetcher._allowed(URL))
+          try:
+              body = fetcher.get(URL, fresh=True)
+          except Exception as e:
+              print('FETCH FAILED:', type(e).__name__, e)
+              raise SystemExit(0)
+
+          print('bytes:', len(body))
+          head = body.lstrip()[:60].replace(chr(10), ' ')
+          print('starts:', head)
+          if 'BEGIN:VCALENDAR' not in body:
+              print('NOT ICALENDAR — the feed has moved or now returns a page')
+              raise SystemExit(0)
+
+          events = list(ical.parse(body))
+          print(len(events), 'event(s) in the feed')
+          for event in events[:8]:
+              print('   ', event['start_date'], '..', event['end_date'],
+                    '|', event['title'][:52])
+              print('        LOCATION:', event.get('location_name') or '(none)')
+          without = [e['title'] for e in events if not e.get('location_name')]
+          if without:
+              print(len(without), 'event(s) carry no LOCATION —',
+                    'the row venue is what places them')" || true
+
+          echo "########## does the seeded fallback postcode resolve, and where?"
+          sudo python3 -c "
+          import sqlite3
+          db = sqlite3.connect('/var/lib/daysout/daysout.db')
+          row = db.execute(
+              'SELECT name, kind, venue_name, venue_postcode FROM sources'
+              \" WHERE name = 'iacf-newark'\").fetchone()
+          print('sources row:', row)
+          if not row or not row[3]:
+              raise SystemExit(0)
+          key = row[3].replace(' ', '').upper()
+          found = db.execute(
+              'SELECT postcode, lat, lon FROM postcodes WHERE postcode = ?',
+              (key,)).fetchone()
+          if found:
+              print(f'    {row[3]} -> {found[1]}, {found[2]}')
+              print('    (Newark Showground should be near 53.08, -0.77)')
+          else:
+              print(f'    {row[3]} IS NOT IN THE POSTCODE TABLE —'
+                    ' the fallback would place nothing')" || true
+
       - name: Hunt for a sanctioned route into National Trust events
         # The pages are closed to us and we do not work around that, so
         # look for a route the site offers instead: a calendar feed, an

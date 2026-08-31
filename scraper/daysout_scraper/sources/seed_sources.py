@@ -31,6 +31,16 @@ CANDIDATES = [
     # Craft, food, music, art.
     ("creative-crafts", "https://www.creativecrafts-online.co.uk/",
      "auto", "craft", "Creative Crafts Association craft and gift fairs"),
+    # An iCal feed, which is the nicest thing a source can be: published
+    # for subscription, machine-readable by design, and nothing to guess
+    # at. kind is 'ical' rather than 'auto' because the URL is a query
+    # string ("?feed=...") that a probe would fetch as a web page.
+    # Categorised as craft: an antiques and collectors fair is not quite
+    # that, but it is the nearest of the eight categories the UI offers
+    # and a new one would mean touching the filters, the colours and the
+    # settings page for one source.
+    ("iacf-newark", "https://www.iacf.co.uk/?feed=iacf-newark-events-ical",
+     "ical", "craft", "IACF antiques and collectors fairs at Newark"),
     ("festival-calendar-art", "https://www.thefestivalcalendar.co.uk/art-festivals.php",
      "auto", "art", "The Festival Calendar: art festivals"),
     ("festival-calendar-food", "https://www.thefestivalcalendar.co.uk/food-festivals.php",
@@ -56,6 +66,18 @@ CANDIDATES = [
 # anything edited by hand is left alone.
 URL_FIXES = [
     ("rhs-events", "https://www.rhs.org.uk/events", "https://www.rhs.org.uk/"),
+]
+
+# A source that is one venue: every event happens at the same address and
+# the feed may not repeat it. Used only as a fallback — an event that
+# brings its own postcode keeps it — but without one an event has nowhere
+# to go and the pipeline drops it.
+#
+# NOT YET VERIFIED against the feed: the sandbox cannot reach the site, so
+# whether the feed's own LOCATION carries the address is a question the
+# deploy answers. If it does, this fallback never fires.
+VENUES = [
+    ("iacf-newark", "Newark Showground", "NG24 2NY"),
 ]
 
 # Verdicts from running discovery and a sitemap crawl against each site on
@@ -129,6 +151,14 @@ def ensure(db):
                VALUES (?, ?, ?, ?, 1, ?, ?)""",
             (name, url, kind, category, notes, dbmod.now()))
         added += cursor.rowcount
+
+    # Only fill a venue in where the row has none, so a corrected one
+    # survives an upgrade the way a hand-edited URL does.
+    for name, venue_name, venue_postcode in VENUES:
+        db.execute(
+            "UPDATE sources SET venue_name = ?, venue_postcode = ?"
+            " WHERE name = ? AND venue_name = '' AND venue_postcode = ''",
+            (venue_name, venue_postcode, name))
 
     for name, wrong_url, right_url in URL_FIXES:
         db.execute(

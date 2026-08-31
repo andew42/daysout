@@ -260,6 +260,19 @@ daysout/
   `kind` is wpevents | ical | jsonld | sitemap | browser | auto; auto
   probes the URL via `discover.py` and picks, trying `wpevents` first
   because a documented API beats every kind of scraping.
+- **An iCal feed needs no parser of ours.** `ical.py` reads RFC 5545 and
+  `kind='ical'` runs it, so a site publishing .ics is an INSERT —
+  `iacf-newark` (IACF antiques fairs at Newark) is one. Two things about
+  the format bite: an all-day `DTEND` is **exclusive**, so a fair running
+  the 2nd to the 3rd is published as ending on the 4th, and long lines are
+  folded as CRLF plus **one** inserted space, so unfolding a fold at a
+  word gap needs two spaces on the continuation line — a test fixture
+  written with one is wrong, not the reader. Its URL is a query string
+  (`?feed=...`), so the kind is set explicitly: `auto` would probe it as a
+  web page. One venue, so the row carries `venue_name`/`venue_postcode` as
+  a fallback for events whose LOCATION omits the address — **NG24 2NY was
+  written from memory, not measured**, and the deploy step prints both the
+  feed's own LOCATION and where that postcode geocodes to.
 - **`wpevents` reads The Events Calendar's REST API**
   (`/wp-json/tribe/events/v1/events`), the WordPress plugin a large share
   of UK venues and festivals run. It gives a title, real dates and a venue
