@@ -6,6 +6,7 @@ with coordinates, and Event objects with dates. Parsing that is far more
 robust than scraping each site's HTML, and one engine serves every source.
 """
 
+import html
 import json
 
 from bs4 import BeautifulSoup
@@ -44,9 +45,24 @@ def _types(obj):
 
 
 def _text(value):
+    """A JSON-LD string as text, with HTML entities decoded.
+
+    Everything read out of JSON-LD comes through here, and it has to
+    unescape because of where JSON-LD lives. Script content is raw text in
+    HTML5, so the parser decodes entities in the page's markup and leaves
+    them untouched inside <script type="application/ld+json"> — a site
+    whose templating escapes the block anyway hands us "Members&#39;
+    Event" and "Kit&#39;s Coty House", which is what reached the map pins
+    and the events list. The frontend escapes what it interpolates, quite
+    correctly, so an entity stored here is one the reader actually sees.
+
+    Decoded once, which is what the data wants: English Heritage's titles
+    are singly escaped. (The WordPress API double-encodes, and
+    feeds._plain unescapes twice for that reason — a different route in.)
+    """
     if isinstance(value, dict):
-        return str(value.get("name", "") or value.get("@value", ""))
-    return str(value) if value else ""
+        value = value.get("name", "") or value.get("@value", "")
+    return html.unescape(str(value)) if value else ""
 
 
 def _geo(obj):

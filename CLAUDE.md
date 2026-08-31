@@ -331,6 +331,19 @@ daysout/
   other people's pages: the map popup escapes what it interpolates, and
   every link goes through `webURL` (`links.jsx`), which passes only
   absolute http(s) — `javascript:` and `data:` come back empty.
+- **JSON-LD text has to be unescaped, page markup does not.** Script
+  content is raw text in HTML5, so the parser decodes entities in a
+  page's markup and leaves them untouched inside
+  `<script type="application/ld+json">`. A site whose templating escapes
+  the block anyway hands us "Members&#39; Event" — and because the
+  frontend escapes what it interpolates, quite correctly, an entity left
+  in the database is one the reader actually sees. `jsonld._text` is the
+  one place every JSON-LD string comes through, so it unescapes there,
+  once: English Heritage escapes singly. (`feeds._plain` unescapes twice
+  because the WordPress API double-encodes — a different route in.)
+  Existing rows heal themselves: `upsert_destination` updates the name on
+  conflict, and a venue created by `ensure_venue` keys on its name, so the
+  corrected one is a new row and the stale purge takes the old.
 - **A venue's link is the site, not the event page**, since a venue
   outlives the event that introduced it. `backfill_venue_url` fills a
   blank on every linked event, not just when creating the venue:
