@@ -287,6 +287,83 @@ jobs:
           sudo env DAYSOUT_DATA=/var/lib/daysout python3 -m daysout_scraper.feedhunt \
             --url https://www.shuttleworth.org/ --scan-newest --skip-probes || true
 
+      - name: What UK Craft Fairs actually serves
+        # The row has been kind='browser' since discovery found no
+        # structured data in the served HTML, and the browser kind reads
+        # Event JSON-LD and nothing else — so if rendering still produces
+        # none, this source contributes nothing until someone writes a DOM
+        # parser for it. Whether that is worth writing, and what it should
+        # anchor on, are questions only the house server can answer.
+        #
+        # Four of them, in the order that can stop the work early:
+        # 1. Does a plain fetch work at all? The seeded note says the
+        #    server returns malformed HTTP headers, recorded from a single
+        #    run in Aug 2026 and never re-checked. A parser built around a
+        #    problem that has since been fixed is worse than no parser.
+        # 2. Is it a bot-protection challenge? That is the site saying no,
+        #    and the answer is to stop and record it — never to render
+        #    past it, as with National Trust.
+        # 3. Is there a feed or an events API? A documented API beats
+        #    every kind of scraping and would make a parser unnecessary.
+        # 4. Only if it is freely served and has no feed: what does the
+        #    rendered calendar hold — dates, event links, or nothing?
+        continue-on-error: true
+        run: |
+          cd /opt/daysout/scraper
+          CAL=https://www.ukcraftfairs.com/calendar
+
+          echo "########## does a plain fetch work, and is it a refusal?"
+          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -c "
+          import sys; sys.path.insert(0, '.')
+          from daysout_scraper.fetch import Fetcher
+          from daysout_scraper.sources.national_trust import looks_like_a_challenge
+
+          URL = '$CAL'
+          fetcher = Fetcher('/var/lib/daysout/scrape-cache')
+          print('robots.txt allows it:', fetcher._allowed(URL))
+          try:
+              body = fetcher.get(URL, fresh=True)
+          except Exception as e:
+              print('PLAIN FETCH FAILED:', type(e).__name__, e)
+              raise SystemExit(0)
+          print('bytes:', len(body))
+          print('bot-protection challenge:', looks_like_a_challenge(body))
+          print('--- first 300 bytes:')
+          print(body[:300])" || true
+
+          echo "########## a feed or an API would beat every kind of scraping"
+          sudo env DAYSOUT_DATA=/var/lib/daysout \
+            python3 -m daysout_scraper.feedhunt \
+              --url https://www.ukcraftfairs.com/ --scan-newest || true
+
+          echo "########## what the calendar carries, un-rendered vs rendered"
+          # --fresh: a cached render cannot say what the site returns now,
+          # and reading a stale copy while believing otherwise is how the
+          # scrolling change came back with identical byte counts.
+          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -m daysout_scraper.discover \
+            --url "$CAL" --browser --deep --fresh || true
+
+          echo "########## where the dates sit, if they are there at all"
+          # date_context anchors a date to the element carrying it, which
+          # is what found Shuttleworth's. A listing page repeats its own
+          # furniture, so "the page has date-looking text" is not on its
+          # own an answer — the anchor is.
+          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -c "
+          import sys; sys.path.insert(0, '.')
+          from daysout_scraper.fetch import Fetcher
+          from daysout_scraper import browser, domscan
+
+          URL = '$CAL'
+          if not browser.available():
+              print('playwright is not installed — rendered scan skipped')
+              raise SystemExit(0)
+          fetcher = Fetcher('/var/lib/daysout/scrape-cache')
+          with browser.Renderer(fetcher.session.headers['User-Agent']) as renderer:
+              fetcher.renderer = renderer
+              body = fetcher.get(URL, render=True)
+          print(len(body), 'bytes rendered')
+          print(domscan.describe_date_context(domscan.date_context(body, limit=12)))" || true
+
       - name: Hunt for a sanctioned route into National Trust events
         # The pages are closed to us and we do not work around that, so
         # look for a route the site offers instead: a calendar feed, an
