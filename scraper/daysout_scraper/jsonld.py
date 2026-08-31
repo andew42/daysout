@@ -10,6 +10,8 @@ import json
 
 from bs4 import BeautifulSoup
 
+from . import dates
+
 PLACE_TYPES = {"Place", "TouristAttraction", "LandmarksOrHistoricalBuildings",
                "Park", "Museum", "LocalBusiness", "TouristDestination"}
 EVENT_TYPES = {"Event", "Festival", "ExhibitionEvent", "SocialEvent",
@@ -65,9 +67,16 @@ def _postcode(obj):
 
 
 def _date(value):
-    """'2026-08-29T10:00:00+01:00' -> '2026-08-29'."""
-    text = _text(value)
-    return text[:10] if len(text) >= 10 else ""
+    """'2026-08-29T10:00:00+01:00' -> '2026-08-29'.
+
+    Parsed rather than sliced. Taking the first ten characters assumes the
+    publisher zero-pads, and UK Craft Fairs does not: its startDate is
+    "2026-9-6T10:00:00", whose first ten characters are "2026-9-6T1" — the
+    right length and not a date, which is the shape that gets stored
+    quietly and then never matches a query. db.upsert_event refuses it, so
+    all 26 of that site's fairs were read correctly and thrown away.
+    """
+    return dates.to_iso(_text(value))
 
 
 def parse_place(obj, page_url):

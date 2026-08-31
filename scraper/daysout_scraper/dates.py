@@ -17,7 +17,10 @@ import re
 from datetime import date
 
 # 2026-05-02, optionally with a time after a space or T.
-ISO_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$")
+# Zero-padded or not: UK Craft Fairs publishes startDate as
+# "2026-9-6T10:00:00", and its first ten characters are "2026-9-6T1".
+# The year first is what distinguishes this from DASHED_RE below.
+ISO_RE = re.compile(r"^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T ].*)?$")
 
 # 02/05/2026 and 2/5/26 — day first, as UK sites write it. Never
 # month-first: this is a UK-only tool, and guessing between the two on

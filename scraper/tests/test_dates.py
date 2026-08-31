@@ -98,3 +98,36 @@ class TestTheApiRouteNormalises(unittest.TestCase):
         self.assertIsNone(self.source()._api_event({
             "id": 8, "title": "Mystery", "start_date": "soon",
             "venue": {"venue": "Stonor Park", "zip": "RG9 6HF"}}))
+
+
+class TestUnpaddedISO(unittest.TestCase):
+    """UK Craft Fairs publishes "2026-9-6T10:00:00" — a real date that is
+    not zero-padded. Slicing ten characters off it yields "2026-9-6T1",
+    which is the right length and not a date, so it reaches the database
+    looking plausible and matches no query."""
+
+    def test_a_single_digit_month_and_day(self):
+        self.assertEqual(dates.to_iso("2026-9-6T10:00:00"), "2026-09-06")
+        self.assertEqual(dates.to_iso("2026-9-6"), "2026-09-06")
+
+    def test_padded_dates_are_unaffected(self):
+        self.assertEqual(dates.to_iso("2026-08-29T10:00:00+01:00"), "2026-08-29")
+
+    def test_day_first_is_still_read_day_first(self):
+        # The year-first shape above must not make "02-05-2026" ambiguous.
+        self.assertEqual(dates.to_iso("02-05-2026"), "2026-05-02")
+
+    def test_nonsense_is_still_refused(self):
+        self.assertEqual(dates.to_iso("2026-13-40"), "")
+
+
+class TestJsonLdDatesAreParsedNotSliced(unittest.TestCase):
+
+    def test_the_unpadded_shape(self):
+        from daysout_scraper import jsonld
+        self.assertEqual(jsonld._date("2026-9-6T10:00:00"), "2026-09-06")
+
+    def test_a_day_first_datetime_is_read_rather_than_stored_raw(self):
+        from daysout_scraper import jsonld
+        self.assertEqual(jsonld._date("02/05/2026 10:00:00"), "2026-05-02")
+

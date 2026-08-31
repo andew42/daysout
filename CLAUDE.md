@@ -121,7 +121,13 @@ daysout/
   right length and the wrong order, and all five of its events sat in the
   database unseen. `dates.to_iso` normalises on every route in, and
   `db.upsert_event` refuses anything that is not `YYYY-MM-DD` rather than
-  storing it quietly.
+  storing it quietly. That guard earned its keep on UK Craft Fairs, whose
+  JSON-LD is *not* zero-padded — `startDate` is "2026-9-6T10:00:00", and
+  its first ten characters are "2026-9-6T1". `jsonld._date` used to take
+  that slice, so all 26 fairs of the first live run were read perfectly
+  and refused at the door. It parses through `dates.to_iso` now, and
+  `to_iso` accepts an unpadded year-first date; slicing ten characters
+  off a date assumes a publisher pads, and two sites here do not.
 - **Historic Houses** (`sources/historic_houses.py`) covers the privately
   owned houses the two big charities leave out. Its `house-sitemap.xml` is
   one entry per house and carries no events, so it contributes places only,

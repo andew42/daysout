@@ -52,11 +52,13 @@ NAV = ('<h1 class="page-header modal-title h6 text-center">Monday, 31 August 202
 DAY_PAGE = f"<html><body>{NAV}{LOWTHER_ROW}{HAWES_ROW}{NOWHERE_ROW}</body></html>"
 
 # Its JSON-LD has no endDate and no postalCode; the postcode is in the
-# prose beside the map, exactly as the deploy printed it.
+# prose beside the map, exactly as the deploy printed it. Note the
+# startDate: this site does not zero-pad, so "2026-8-29T10:00:00" is what
+# arrives, and its first ten characters are "2026-8-29T" — not a date.
 LOWTHER_PAGE = """<html><head><script type="application/ld+json">
 {"@context":"https://schema.org","@type":"Event",
  "name":"Lowther Gardens Food and Drink Festival",
- "startDate":"2026-08-29",
+ "startDate":"2026-8-29T10:00:00",
  "location":{"@type":"Place","name":"Lowther Gardens"}}
 </script></head><body>
 <p>Lowther Gardens West Beach, Lytham St Annes , Lancashire , FY8 5QQ</p>
@@ -66,7 +68,7 @@ LOWTHER_PAGE = """<html><head><script type="application/ld+json">
 HAWES_PAGE = """<html><head><script type="application/ld+json">
 {"@context":"https://schema.org","@type":"Event",
  "name":"August Bank Holiday Craft Fair in Hawes Wensleydale",
- "startDate":"2026-08-27","endDate":"2026-08-27",
+ "startDate":"2026-8-27T10:00:00","endDate":"2026-8-27T16:00:00",
  "location":{"@type":"Place","name":"The Market House",
    "address":{"@type":"PostalAddress","postalCode":"DL8 3QR"}}}
 </script></head><body></body></html>"""
@@ -162,6 +164,13 @@ class TestReadingAFairsOwnPage(unittest.TestCase):
         # Its JSON-LD gives only startDate, which would make a three-day
         # fair look like a one-day one.
         self.assertEqual(self.events()["26533"]["end_date"], "2026-08-31")
+
+    def test_an_unpadded_jsonld_date_is_read_not_sliced(self):
+        # The site publishes "2026-8-29T10:00:00". Slicing ten characters
+        # off that gives "2026-8-29T", which upsert_event refuses — all 26
+        # fairs were read correctly and thrown away on the first live run.
+        self.assertEqual(self.events()["26533"]["start_date"], "2026-08-29")
+        self.assertEqual(self.events()["26465"]["start_date"], "2026-08-27")
 
     def test_a_fair_with_no_postcode_anywhere_is_dropped(self):
         # The pipeline could not place it, so it is not offered.
