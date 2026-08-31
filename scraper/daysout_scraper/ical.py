@@ -9,6 +9,7 @@ Only what an event listing needs is parsed: SUMMARY, DTSTART, DTEND,
 LOCATION, DESCRIPTION, URL, UID.
 """
 
+import html
 import re
 
 # A long value is continued on the next line, which begins with a space or
@@ -22,9 +23,19 @@ ESCAPES = {"\\n": "\n", "\\N": "\n", "\\,": ",", "\\;": ";", "\\\\": "\\"}
 
 
 def _unescape(text):
+    """iCalendar escaping first, then HTML entities.
+
+    The two are unrelated and both turn up. RFC 5545 escapes commas,
+    semicolons and newlines; on top of that a WordPress export writes its
+    post text straight into SUMMARY and DESCRIPTION with the entities
+    still in it, so "Antiques &amp; Collectors" and a curly apostrophe as
+    "&#8217;" arrive here. The frontend escapes what it interpolates,
+    quite correctly, so an entity left in the database is one the reader
+    actually sees — the same trap as JSON-LD inside a <script>.
+    """
     for escaped, plain in ESCAPES.items():
         text = text.replace(escaped, plain)
-    return text.strip()
+    return html.unescape(text).strip()
 
 
 def _date(value):

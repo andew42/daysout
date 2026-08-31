@@ -16,8 +16,13 @@ import (
 // trying a new listing site is a row, not a release — which is what lets
 // the UI add one.
 type Source struct {
-	Name     string `json:"name"`
-	URL      string `json:"url"`
+	Name string `json:"name"`
+	// What the scraper fetches. For a feed row this is a .ics or a
+	// "?feed=..." address: right to fetch, wrong to offer a reader.
+	URL string `json:"url"`
+	// Where to send a person instead, when the above is a feed. Blank
+	// means URL is fit to show.
+	SiteURL  string `json:"siteUrl"`
 	Kind     string `json:"kind"`
 	Category string `json:"category"`
 	Enabled  bool   `json:"enabled"`
@@ -114,13 +119,14 @@ WITH names AS (
     UNION SELECT source FROM events WHERE source != 'seed'
 )
 SELECT n.name,
-       COALESCE(s.url, ''), COALESCE(s.kind, ''), COALESCE(s.category, ''),
+       COALESCE(s.url, ''), COALESCE(s.site_url, ''),
+       COALESCE(s.kind, ''), COALESCE(s.category, ''),
        COALESCE(s.enabled, 1), COALESCE(s.notes, ''), COALESCE(s.added, ''),
        COALESCE(s.last_status, ''),
        COALESCE(s.venue_name, ''), COALESCE(s.venue_postcode, ''),
        s.name IS NULL AS built_in,
-       (SELECT COUNT(*) FROM events e WHERE e.source = n.name),
-       (SELECT COUNT(*) FROM destinations d WHERE d.source = n.name),
+       (SELECT COUNT(*) FROM events e WHERE e.source = n.name) AS event_count,
+       (SELECT COUNT(*) FROM destinations d WHERE d.source = n.name) AS place_count,
        (SELECT r.started_at FROM scrape_runs r
           WHERE r.source = n.name ORDER BY r.id DESC LIMIT 1),
        (SELECT r.ok FROM scrape_runs r
@@ -129,7 +135,7 @@ SELECT n.name,
           WHERE r.source = n.name ORDER BY r.id DESC LIMIT 1)
 FROM names n LEFT JOIN sources s ON s.name = n.name
 WHERE n.name NOT IN (SELECT name FROM removed_sources)
-ORDER BY 12 DESC, 13 DESC, n.name`
+ORDER BY event_count DESC, place_count DESC, n.name`
 
 // Sources returns every source with what it is contributing, for the UI.
 func (s *Store) Sources() ([]Source, error) {
@@ -148,7 +154,7 @@ func (s *Store) Sources() ([]Source, error) {
 		var lastRun, lastMessage sql.NullString
 		var lastOK sql.NullBool
 
-		if err := rows.Scan(&src.Name, &src.URL, &src.Kind, &src.Category,
+		if err := rows.Scan(&src.Name, &src.URL, &src.SiteURL, &src.Kind, &src.Category,
 			&enabled, &src.Notes, &src.Added, &src.LastStatus,
 			&src.VenueName, &src.VenuePostcode, &builtIn,
 			&src.Events, &src.Destinations,

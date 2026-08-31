@@ -59,7 +59,12 @@ CREATE TABLE IF NOT EXISTS sources (
     -- to put them those events are dropped, so a source may carry its
     -- venue: used only when an event brings none of its own.
     venue_name     TEXT NOT NULL DEFAULT '',
-    venue_postcode TEXT NOT NULL DEFAULT ''
+    venue_postcode TEXT NOT NULL DEFAULT '',
+    -- Where a person should be sent to read this source for themselves.
+    -- url is what the scraper fetches, which for a feed is a .ics or a
+    -- "?feed=..." query string — correct to fetch and useless to click.
+    -- Blank means url is fit to show, which it is for an ordinary site.
+    site_url       TEXT NOT NULL DEFAULT ''
 );
 
 -- Sources removed through the UI. The scraper re-inserts any candidate

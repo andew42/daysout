@@ -367,8 +367,16 @@ export default function SourcesView() {
                     onToggle={() => toggleRows(source)}
                   />
                 </strong>
-                {source.url
-                  ? <a href={webURL(source.url)} target="_blank" rel="noreferrer">{source.url}</a>
+                {/* Show where a person can read the source, not what the
+                    scraper fetches: a feed row's url is a .ics or a
+                    "?feed=..." query string, which is right to fetch and
+                    no use to click. siteUrl is blank for an ordinary
+                    site, where the two are the same thing. */}
+                {source.siteUrl || source.url
+                  ? <a href={webURL(source.siteUrl || source.url)}
+                       target="_blank" rel="noreferrer">
+                      {source.siteUrl || source.url}
+                    </a>
                   : <span className="source-meta">built into the scraper</span>}
                 {!source.builtIn && (
                   <span className="source-meta">

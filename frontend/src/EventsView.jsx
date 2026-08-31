@@ -4,10 +4,16 @@ import { fetchEvents } from './api.jsx'
 import { CATEGORY_COLORS, loadSettings } from './settings.jsx'
 import { webURL } from './links.jsx'
 
+// UK order, dd/mm/yyyy. Formatted straight off the stored string rather
+// than through a Date: these are plain ISO dates with no time, and parsing
+// one into a Date makes it a moment — which is why this used to pin it to
+// midday, to stop a timezone shift turning the 1st into the 31st. Slicing
+// the text cannot drift.
 function formatDate(iso) {
-  return new Date(iso + 'T12:00:00').toLocaleDateString('en-GB', {
-    weekday: 'short', day: 'numeric', month: 'short',
-  })
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '')
+  if (!parts) return iso || ''
+  const [, year, month, day] = parts
+  return `${day}/${month}/${year}`
 }
 
 function dateRange(event) {

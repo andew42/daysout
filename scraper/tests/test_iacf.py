@@ -37,11 +37,13 @@ FEED = (
     "DTSTART;VALUE=DATE:20260902\r\n"
     "DTEND;VALUE=DATE:20260904\r\n"
     "UID:26501-1756684800@www.iacf.co.uk\r\n"
-    "SUMMARY:IACF Newark International Antiques & Collectors Fair\r\n"
+    # A WordPress export writes its post text straight in, entities and
+    # all, so this is what actually arrives.
+    "SUMMARY:IACF Newark International Antiques &amp; Collectors Fair\r\n"
     # Folded mid-word: unfolding removes the CRLF *and* the one inserted
     # space (RFC 5545 3.1), so a fold at a word gap carries two spaces on
     # the continuation line. Splitting a word says which happened.
-    "DESCRIPTION:Europe's largest antiques fair\\, with up to 2500 stalls"
+    "DESCRIPTION:Europe&#8217;s largest antiques fair\\, with up to 2500 stalls"
     " across the show\r\n"
     " ground.\r\n"
     "URL:https://www.iacf.co.uk/event/newark-september-2026/\r\n"
@@ -73,7 +75,7 @@ class FakeFetcher:
 
 def source(venue_name="Newark Showground", venue_postcode="NG24 2NY"):
     # (id, name, url, kind, category, venue_name, venue_postcode)
-    return FeedSource((1, "iacf-newark", FEED_URL, "ical", "craft",
+    return FeedSource((1, "iacf-newark", FEED_URL, "ical", "antiques",
                        venue_name, venue_postcode))
 
 
@@ -93,10 +95,18 @@ class TestReadingTheFeed(unittest.TestCase):
         self.assertEqual(event["start_date"], "2026-09-02")
         self.assertEqual(event["end_date"], "2026-09-03")
 
+    def test_html_entities_are_decoded(self):
+        # A WordPress export leaves them in SUMMARY and DESCRIPTION, and
+        # the frontend escapes what it interpolates — so an entity stored
+        # here is one the reader sees.
+        self.assertEqual(
+            self.events()[0]["title"],
+            "IACF Newark International Antiques & Collectors Fair")
+
     def test_a_folded_description_is_rejoined(self):
         self.assertEqual(
             self.events()[0]["description"],
-            "Europe's largest antiques fair, with up to 2500 stalls"
+            "Europe\u2019s largest antiques fair, with up to 2500 stalls"
             " across the showground.")
 
     def test_the_postcode_comes_from_the_feed_when_it_has_one(self):
@@ -144,7 +154,7 @@ class TestTheEventsReachTheDatabase(unittest.TestCase):
         self.assertEqual(
             db.execute("SELECT name, postcode, category FROM destinations")
               .fetchall(),
-            [("Newark Showground", "NG24 2NY", "craft")])
+            [("Newark Showground", "NG24 2NY", "antiques")]) 
 
 
 class TestTheSeededRow(unittest.TestCase):
@@ -160,8 +170,48 @@ class TestTheSeededRow(unittest.TestCase):
         row = self.db().execute(
             "SELECT url, kind, category, venue_name, venue_postcode"
             " FROM sources WHERE name = 'iacf-newark'").fetchone()
-        self.assertEqual(row, (FEED_URL, "ical", "craft",
+        self.assertEqual(row, (FEED_URL, "ical", "antiques",
                                "Newark Showground", "NG24 2NY"))
+
+    def test_all_three_fairs_are_seeded(self):
+        rows = self.db().execute(
+            "SELECT name, category FROM sources WHERE name LIKE 'iacf-%'"
+            " ORDER BY name").fetchall()
+        self.assertEqual(rows, [("iacf-ardingly", "antiques"),
+                                ("iacf-newark", "antiques"),
+                                ("iacf-shepton-mallet", "antiques")])
+
+    def test_the_link_shown_is_the_site_not_the_feed(self):
+        # The Sources page offered the "?feed=..." address as the link,
+        # which is right to fetch and no use to click.
+        for name in ("iacf-newark", "iacf-ardingly", "iacf-shepton-mallet"):
+            site, url = self.db().execute(
+                "SELECT site_url, url FROM sources WHERE name = ?",
+                (name,)).fetchone()
+            self.assertEqual(site, "https://www.iacf.co.uk/")
+            self.assertIn("?feed=", url)
+
+    def test_a_row_seeded_before_the_category_existed_is_corrected(self):
+        # ensure() only ever inserts, so without CATEGORY_FIXES the row
+        # seeded as 'craft' would keep it for ever.
+        db = self.db()
+        db.execute("UPDATE sources SET category = 'craft'"
+                   " WHERE name = 'iacf-newark'")
+        seed_sources.ensure(db)
+        self.assertEqual(
+            db.execute("SELECT category FROM sources"
+                       " WHERE name = 'iacf-newark'").fetchone()[0],
+            "antiques")
+
+    def test_a_hand_chosen_category_is_left_alone(self):
+        db = self.db()
+        db.execute("UPDATE sources SET category = 'venue'"
+                   " WHERE name = 'iacf-newark'")
+        seed_sources.ensure(db)
+        self.assertEqual(
+            db.execute("SELECT category FROM sources"
+                       " WHERE name = 'iacf-newark'").fetchone()[0],
+            "venue")
 
     def test_a_hand_corrected_venue_is_left_alone(self):
         # ensure() runs every scrape; it must not undo a fix.

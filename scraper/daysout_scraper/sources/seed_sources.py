@@ -31,16 +31,24 @@ CANDIDATES = [
     # Craft, food, music, art.
     ("creative-crafts", "https://www.creativecrafts-online.co.uk/",
      "auto", "craft", "Creative Crafts Association craft and gift fairs"),
-    # An iCal feed, which is the nicest thing a source can be: published
-    # for subscription, machine-readable by design, and nothing to guess
-    # at. kind is 'ical' rather than 'auto' because the URL is a query
-    # string ("?feed=...") that a probe would fetch as a web page.
-    # Categorised as craft: an antiques and collectors fair is not quite
-    # that, but it is the nearest of the eight categories the UI offers
-    # and a new one would mean touching the filters, the colours and the
-    # settings page for one source.
+    # IACF's three showground fairs, each publishing an iCal feed — the
+    # nicest thing a source can be: offered for subscription,
+    # machine-readable by design, and nothing to guess at. kind is 'ical'
+    # rather than 'auto' because the URL is a query string ("?feed=...")
+    # that a probe would fetch as a web page.
+    #
+    # Only the Newark address was given to us. The other two are that
+    # pattern with the venue's name in it, which is a guess until the
+    # deploy says otherwise — a wrong slug reports "no places found"
+    # rather than doing any harm, and the deploy step probes several
+    # spellings of each so a miss can be corrected in one go.
     ("iacf-newark", "https://www.iacf.co.uk/?feed=iacf-newark-events-ical",
-     "ical", "craft", "IACF antiques and collectors fairs at Newark"),
+     "ical", "antiques", "IACF antiques and collectors fair at Newark"),
+    ("iacf-ardingly", "https://www.iacf.co.uk/?feed=iacf-ardingly-events-ical",
+     "ical", "antiques", "IACF antiques and collectors fair at Ardingly"),
+    ("iacf-shepton-mallet",
+     "https://www.iacf.co.uk/?feed=iacf-shepton-mallet-events-ical",
+     "ical", "antiques", "IACF antiques and collectors fair at Shepton Mallet"),
     ("festival-calendar-art", "https://www.thefestivalcalendar.co.uk/art-festivals.php",
      "auto", "art", "The Festival Calendar: art festivals"),
     ("festival-calendar-food", "https://www.thefestivalcalendar.co.uk/food-festivals.php",
@@ -78,6 +86,30 @@ URL_FIXES = [
 # deploy answers. If it does, this fallback never fires.
 VENUES = [
     ("iacf-newark", "Newark Showground", "NG24 2NY"),
+    ("iacf-ardingly", "South of England Showground", "RH17 6TL"),
+    ("iacf-shepton-mallet", "Royal Bath and West Showground", "BA4 6QN"),
+]
+
+# What to show a person instead of the address the scraper fetches. A feed
+# row's url is a .ics or a "?feed=..." query string: right to fetch and no
+# use to click, and the Sources page was offering it as the link. Blank
+# means the url is fit to show, which it is for an ordinary site.
+#
+# The site root rather than a guessed per-fair page: it is the one address
+# here we know exists. Each event carries its own link from the feed, so
+# this is only the row's.
+SITE_URLS = [
+    ("iacf-newark", "https://www.iacf.co.uk/"),
+    ("iacf-ardingly", "https://www.iacf.co.uk/"),
+    ("iacf-shepton-mallet", "https://www.iacf.co.uk/"),
+]
+
+# Categories corrected after the fact. Applied only where the row still
+# holds the old value, so a re-categorisation by hand survives. ensure()
+# only ever inserts, so without this an existing row keeps what it was
+# seeded with for ever.
+CATEGORY_FIXES = [
+    ("iacf-newark", "craft", "antiques"),
 ]
 
 # Verdicts from running discovery and a sitemap crawl against each site on
@@ -159,6 +191,16 @@ def ensure(db):
             "UPDATE sources SET venue_name = ?, venue_postcode = ?"
             " WHERE name = ? AND venue_name = '' AND venue_postcode = ''",
             (venue_name, venue_postcode, name))
+
+    for name, site_url in SITE_URLS:
+        db.execute(
+            "UPDATE sources SET site_url = ? WHERE name = ? AND site_url = ''",
+            (site_url, name))
+
+    for name, was, becomes in CATEGORY_FIXES:
+        db.execute(
+            "UPDATE sources SET category = ? WHERE name = ? AND category = ?",
+            (becomes, name, was))
 
     for name, wrong_url, right_url in URL_FIXES:
         db.execute(

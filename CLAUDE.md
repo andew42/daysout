@@ -261,18 +261,26 @@ daysout/
   probes the URL via `discover.py` and picks, trying `wpevents` first
   because a documented API beats every kind of scraping.
 - **An iCal feed needs no parser of ours.** `ical.py` reads RFC 5545 and
-  `kind='ical'` runs it, so a site publishing .ics is an INSERT —
-  `iacf-newark` (IACF antiques fairs at Newark) is one. Two things about
-  the format bite: an all-day `DTEND` is **exclusive**, so a fair running
-  the 2nd to the 3rd is published as ending on the 4th, and long lines are
-  folded as CRLF plus **one** inserted space, so unfolding a fold at a
-  word gap needs two spaces on the continuation line — a test fixture
-  written with one is wrong, not the reader. Its URL is a query string
-  (`?feed=...`), so the kind is set explicitly: `auto` would probe it as a
-  web page. One venue, so the row carries `venue_name`/`venue_postcode` as
-  a fallback for events whose LOCATION omits the address — **NG24 2NY was
-  written from memory, not measured**, and the deploy step prints both the
-  feed's own LOCATION and where that postcode geocodes to.
+  `kind='ical'` runs it, so a site publishing .ics is an INSERT — IACF's
+  three showground fairs (`iacf-newark`, `iacf-ardingly`,
+  `iacf-shepton-mallet`) are the case in point. Three things about the
+  format bite. An all-day `DTEND` is **exclusive**, so a fair running the
+  2nd to the 3rd is published as ending on the 4th. Long lines are folded
+  as CRLF plus **one** inserted space, so unfolding a fold at a word gap
+  needs two spaces on the continuation line — a test fixture written with
+  one is wrong, not the reader. And a WordPress export writes its post
+  text straight into `SUMMARY`/`DESCRIPTION` with HTML entities still in
+  it, so `_unescape` decodes those as well as RFC 5545's own escaping.
+  Their URLs are query strings (`?feed=...`), so the kind is set
+  explicitly: `auto` would probe one as a web page. Each is one venue, so
+  the row carries `venue_name`/`venue_postcode` as a fallback for events
+  whose LOCATION omits the address. **Two guesses are still outstanding
+  and the deploy step settles both**: only the Newark feed address was
+  given to us, so the other two slugs are that pattern with the venue's
+  name in it, and all three postcodes were written from memory rather
+  than measured — a real but wrong one would put a fair on the wrong part
+  of the map without ever failing, so the step geocodes each and prints
+  where it lands.
 - **`wpevents` reads The Events Calendar's REST API**
   (`/wp-json/tribe/events/v1/events`), the WordPress plugin a large share
   of UK venues and festivals run. It gives a title, real dates and a venue
@@ -330,6 +338,11 @@ daysout/
   the Sources tab and showed none here, with nothing to explain the
   difference. An event's own category counts as well as its venue's: a
   craft fair at a historic house is both.
+- **Stored ISO, shown dd/mm/yyyy.** `EventsView.formatDate` slices the
+  stored `YYYY-MM-DD` string rather than going through a `Date`: these
+  are plain dates with no time, and parsing one into a `Date` makes it a
+  moment, which is why the old version pinned it to midday to stop a
+  timezone shift showing the 1st as the 31st. Slicing text cannot drift.
 - **Settings apply as they change.** They were written to localStorage
   only on form submit, so moving the drive-time slider and navigating by
   the nav left the app querying the old limit while the page showed the
@@ -352,8 +365,12 @@ daysout/
   frontend escapes what it interpolates, quite correctly, an entity left
   in the database is one the reader actually sees. `jsonld._text` is the
   one place every JSON-LD string comes through, so it unescapes there,
-  once: English Heritage escapes singly. (`feeds._plain` unescapes twice
-  because the WordPress API double-encodes — a different route in.)
+  once: English Heritage escapes singly. The same trap arrives by two
+  other routes and is closed at each: `ical._unescape` decodes entities a
+  WordPress .ics export leaves in `SUMMARY`/`DESCRIPTION`, and
+  `feeds._plain` unescapes *twice* because the WordPress REST API
+  double-encodes. Anywhere text arrives from somebody else's template,
+  assume it is escaped once too often.
   Existing rows heal themselves: `upsert_destination` updates the name on
   conflict, and a venue created by `ensure_venue` keys on its name, so the
   corrected one is a new row and the stale purge takes the old.

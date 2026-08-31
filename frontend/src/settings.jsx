@@ -4,7 +4,7 @@
 const KEY = 'daysout-settings'
 
 // Destination categories. Venues created from event listings carry the
-// event's own category (craft, food, music, art) or 'venue' when the
+// event's own category (craft, antiques, food, music, art) or 'venue' when the
 // listing doesn't say.
 export const ALL_CATEGORIES = [
   { id: 'historic-house', label: 'Historic houses' },
@@ -12,6 +12,7 @@ export const ALL_CATEGORIES = [
   { id: 'airfield', label: 'Airfields & aviation' },
   { id: 'art', label: 'Art' },
   { id: 'craft', label: 'Craft' },
+  { id: 'antiques', label: 'Antiques & collectors' },
   { id: 'food', label: 'Food & drink' },
   { id: 'music', label: 'Music' },
   { id: 'venue', label: 'Other venues' },
@@ -24,6 +25,7 @@ export const CATEGORY_COLORS = {
   airfield: '#3a5da8',
   art: '#7b4397',
   craft: '#b5651d',
+  antiques: '#9a7b1f',
   food: '#a8323f',
   music: '#1f7a8c',
   venue: '#666666',
