@@ -354,7 +354,7 @@ daysout/
   Patterns since verified on the house server (30-31 Aug 2026): English
   Heritage 392 places / 116 events, Historic Houses 579 places, National
   Trust challenged, Stonor 5 events, Shuttleworth 24 events, UK Craft
-  Fairs unfetchable but renderable.
+  Fairs 26 events at 23 venues.
   A diagnostic that needs a plain fetch to succeed first is one that
   cannot report on a site whose plain fetch never will: `inspect_dom`
   scans the served page before the rendered one and returns on the
