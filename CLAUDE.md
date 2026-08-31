@@ -19,14 +19,19 @@ daysout/
 │   │                  haversine drive-time maths, demo seed data
 │   └── servers/       HTTP handlers (/api/*, /tiles/*, SPA fallback)
 ├── frontend/          React 19 + Vite 8; MapLibre GL + pmtiles + @protomaps/basemaps
-│   └── src/           .jsx files: MapView, EventsView, SettingsView, api, settings
+│   └── src/           .jsx files: MapView, EventsView, SettingsView,
+│                       SourcesView, api, settings, links
 ├── scraper/           Python 3.11+ package (requests + beautifulsoup4)
 │   ├── daysout_scraper/          pipeline, polite fetcher, JSON-LD engine
-│   ├── daysout_scraper/sources/  national_trust, english_heritage, historic_houses (+ stubs)
+│   ├── daysout_scraper/sources/  national_trust, english_heritage,
+│   │                             historic_houses, shuttleworth (+ stubs)
 │   └── tests/         fixture-based; python3 -m unittest discover tests
 ├── setup/             One-off data population (postcodes, map tiles)
 ├── packaging/         systemd units + timer + install.sh
-└── .github/workflows/build.yml   CI → rolling `latest` release
+└── .github/workflows/
+    ├── build.yml   CI → rolling `latest` release
+    └── deploy.yml  self-hosted runner: install, scrape, and every
+                    diagnostic that needs to reach the real sites
 ```
 
 ## Key decisions
@@ -40,7 +45,9 @@ daysout/
   Fonts/sprites served locally from `data/basemap/`. Attribution "© 
   OpenStreetMap contributors" is required and shown on the map.
 - **Drive time** = haversine km × 1.2 ÷ 60 km/h (constants in
-  `backend/store/distance.go`). One hour ≈ 46 km crow-flies.
+  `backend/store/distance.go`). One hour ≈ 50 km crow-flies. The map
+  draws its ring in the browser from its own copy of those two constants,
+  so `MapView.jsx` names them and a Go test asserts the pair agree.
 - **Schema**: `destinations` ↔ `events` (FK), upsert key `(source,
   source_id)`, `last_seen` ages out rows a source stops reporting. The
   schema lives in `backend/store/schema.go`; `scraper/tests/test_scraper.py`
@@ -155,8 +162,8 @@ daysout/
   sitemap" and a count of zero mean the same thing in the end, and only
   one of them says so. It also lists the sources written in code
   (`builtIn`), found by taking the union of the table with whatever has
-  run or produced rows: Wikidata and English Heritage are not in the table
-  and are the two that work, so a page listing only the table was a list
+  run or produced rows: the sources written in code are not in the table
+  and are the ones that work, so a page listing only the table was a list
   of failures. Built-in rows offer Update and nothing else — there is no
   row to remove.
 - **Remove is the only way to stop a source**, behind a confirmation
@@ -198,8 +205,7 @@ daysout/
   has gone; ten-minute timeout. Guards: the name
   must match `safeSourceName` *and* exist in the table (a name starting
   with `-` would be read as a flag), one test at a time behind a mutex so
-  a double-click can't send two crawls at one site, and a 3-minute
-  timeout. `scraperLogLines` strips Python tracebacks — forty frames buried
+  a double-click can't send two crawls at one site. `scraperLogLines` strips Python tracebacks — forty frames buried
   the one line worth reading — leaving the LEVEL-prefixed log. Rows added there are marked in `notes` with
   `store.UIAddedNote`, because only those are safe to delete — the scraper
   re-inserts any seeded candidate missing from the table, so seeded rows
@@ -258,14 +264,51 @@ daysout/
   (`tests/schema.py`) rather than keeping a copy — the copy drifted once
   and broke tests for unrelated reasons. `schema.go` is the current shape;
   `migrate.go` upgrades databases created before a column existed.
+- **A filtered-out event must say so.** `Store.Events` returns an
+  `EventsResult`: the events to show plus counts of what was dropped and
+  why (too far, wrong category, beyond the horizon, plus the nearest
+  excluded venue), and `EventsView` prints it. Silent filtering is
+  indistinguishable from a broken query — a source reported five events on
+  the Sources tab and showed none here, with nothing to explain the
+  difference. An event's own category counts as well as its venue's: a
+  craft fair at a historic house is both.
+- **Settings apply as they change.** They were written to localStorage
+  only on form submit, so moving the drive-time slider and navigating by
+  the nav left the app querying the old limit while the page showed the
+  new one — a setting that looks applied and is not reads exactly like a
+  broken filter. The postcode still waits for the button, because it is
+  only worth keeping once it geocodes.
+- **`index.html` is revalidated, hashed assets are not**
+  (`servers/spa.go`). With no cache headers at all, a browser's heuristic
+  could keep serving a deployed-over page — which points at the previous
+  build's hashed bundle, so a deploy lands and nothing changes.
+- **Scraped text is untrusted.** Names, descriptions and URLs come from
+  other people's pages: the map popup escapes what it interpolates, and
+  every link goes through `webURL` (`links.jsx`), which passes only
+  absolute http(s) — `javascript:` and `data:` come back empty.
+- **A venue's link is the site, not the event page**, since a venue
+  outlives the event that introduced it. `backfill_venue_url` fills a
+  blank on every linked event, not just when creating the venue:
+  `ensure_venue` only runs for venues we do *not* already hold, which
+  after the first scrape is none of them, so putting the fix there alone
+  changed nothing on the map.
+- **The Build workflow is serialised** (`concurrency`, cancel-in-progress).
+  The rolling release is one mutable tag, deleted and recreated per run,
+  so two pushes a minute apart raced and the loser failed with a 403 that
+  reads like a permissions problem.
 - **Concurrency**: server and scraper share the DB via WAL mode.
 
 ## Gotchas
 
-- The development environment this repo was built in could NOT reach the
-  scraped sites (egress proxy), so the NT/EH URL patterns in
-  `scraper/daysout_scraper/sources/` are designed but unverified — first
-  run on real hardware should use `--max-pages 20` and check results.
+- **The development environment cannot reach any scraped site** (egress
+  proxy: `CONNECT tunnel failed, 403`). Every fact about a real page in
+  this file came from the deploy workflow's log, and a parser written here
+  without that evidence is a guess — `slugdate.py` is what that costs.
+  When a new site needs reading, add a step to `deploy.yml` that prints
+  what its pages carry, push, and write the parser against the output.
+  Patterns since verified on the house server (30 Aug 2026): English
+  Heritage 392 places / 116 events, Historic Houses 579 places, National
+  Trust challenged, Stonor 5 events, Shuttleworth pending its first run.
 - `RequireConfigured` in `App.jsx` must stay a render-time component:
   computing "is a postcode configured" in App's body is stale after
   navigation (App doesn't re-render on route changes).
