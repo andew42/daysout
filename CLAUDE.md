@@ -308,7 +308,7 @@ daysout/
   what its pages carry, push, and write the parser against the output.
   Patterns since verified on the house server (30 Aug 2026): English
   Heritage 392 places / 116 events, Historic Houses 579 places, National
-  Trust challenged, Stonor 5 events, Shuttleworth pending its first run.
+  Trust challenged, Stonor 5 events, Shuttleworth 24 events.
 - `RequireConfigured` in `App.jsx` must stay a render-time component:
   computing "is a postcode configured" in App's body is stale after
   navigation (App doesn't re-render on route changes).
