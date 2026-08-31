@@ -197,12 +197,33 @@ daysout/
   the site has no feed, no API and no crawlable sitemap *as far as we can
   ever tell*. Chromium is lenient about the bad header and renders the
   page in full (40,061 bytes), and `looks_like_a_challenge` is false —
-  nobody is turning us away. But the rendered page carries no Event
-  JSON-LD, which is exactly why `kind='browser'` yields nothing: that kind
-  reads structured data and this page has none. A DOM parser is the only
-  route left. Its shape is still open — `<title>` and `<h1>` both read
-  "Monday, 31 August 2026", so `/calendar` looks like a **single-day**
-  view, in which case the date belongs to the page and not to each row.
+  nobody is turning us away. The *calendar* carries no Event JSON-LD,
+  which is exactly why `kind='browser'` yielded nothing: that kind reads
+  structured data and that page has none. But each fair's own page does,
+  so `sources/ukcraftfairs.py` uses the calendar as the index the site
+  otherwise lacks and the fair's page for the details.
+- **UK Craft Fairs' calendar is a single-day view.** `/calendar` is headed
+  "Monday, 31 August 2026" and lists the fairs running *that day*; other
+  days are addressed as its own `<` and `>` links do,
+  `/calendar/1-september-2026`. Each fair is an `<a class="grid-item
+  panel-list">` whose body holds `<p><strong>Venue</strong>, Town,
+  County</p>` and `<p>Saturday, <strong>29 August 2026</strong> (3 day
+  event)</p>` — the date is the fair's **start** and the bracket its
+  length, which is why a page headed the 31st shows fairs dated the 27th
+  and 29th: they are multi-day fairs still running. `.panel-list` matches
+  both the anchor and the panel inside it, so the obvious selector finds
+  every fair twice; the parser keys on the anchor that wraps a
+  `.panel-list-bottom`, which is also what tells a fair's card from the
+  navigation links.
+- **A UK Craft Fairs day page carries no postcode**, only a town and a
+  county, and the pipeline drops an event it cannot geocode — so the
+  listing alone would read fairs all day and contribute nothing. The
+  fair's own page (`/craft-events/<id>/<slug>`) is fetched for it, and
+  carries both Event JSON-LD and an address. Its JSON-LD is preferred but
+  is not always complete: one fair gave `startDate` and no `endDate`,
+  which would turn a three-day fair into a one-day one, so the listing's
+  length wins when it is longer, and `postcode.find` over the page text
+  is the fallback when the JSON-LD has no `postalCode`.
 - **`slugdate.py` reads dates out of a URL** — "evening-airshow-15-september-2026".
   It was written for Shuttleworth and does **not** apply there: measured
   30 Aug 2026, that sitemap holds 374 URLs and **none** carries a date, so

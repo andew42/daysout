@@ -29,8 +29,6 @@ CANDIDATES = [
      "auto", "historic-house", "Private house tours by invitation"),
 
     # Craft, food, music, art.
-    ("uk-craft-fairs", "https://www.ukcraftfairs.com/calendar",
-     "auto", "craft", "UK Craft Fairs calendar"),
     ("creative-crafts", "https://www.creativecrafts-online.co.uk/",
      "auto", "craft", "Creative Crafts Association craft and gift fairs"),
     ("festival-calendar-art", "https://www.thefestivalcalendar.co.uk/art-festivals.php",
@@ -81,9 +79,6 @@ BROWSER = [
     ("festival-calendar-food", "listing built client-side; retry rendered"),
     ("festival-calendar-music", "listing built client-side; retry rendered"),
     ("food-festivals-uk", "a blog, but its festival roundups may render dates"),
-    ("uk-craft-fairs",
-     "no structured data in the served HTML, and its server returns malformed "
-     "HTTP headers that break a plain fetch — a browser sidesteps both"),
 ]
 
 # Nothing here yet: every candidate is worth one rendered attempt before
@@ -109,6 +104,9 @@ RETIRED = [
 SUPERSEDED = [
     ("historic-houses",
      "now crawled by the built-in Historic Houses parser (house-sitemap.xml)"),
+    ("uk-craft-fairs",
+     "now read by the built-in parser: the calendar for discovery, each "
+     "fair's own page for its JSON-LD and postcode"),
 ]
 
 
