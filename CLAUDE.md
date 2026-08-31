@@ -185,6 +185,24 @@ daysout/
   An attraction's own website rarely repeats its address on every event
   page, so without it those events have nowhere to go and are dropped —
   which is most of what a single-venue site publishes.
+- **UK Craft Fairs cannot be fetched, only rendered** — and that is a
+  broken server, not a refusal. Measured on the house server 31 Aug 2026:
+  every plain request to `www.ukcraftfairs.com` times out, because the
+  response's header block contains `Strict Transport Security:` — spaces
+  where the hyphens belong — which is not a legal header name, so
+  http.client never finds the blank line separating headers from body and
+  the read hangs until the timeout, though `Content-Length: 14756` is sat
+  right there in the same block. That took out robots.txt, both sitemap
+  paths, all four wp-json routes and all nine conventional feed paths, so
+  the site has no feed, no API and no crawlable sitemap *as far as we can
+  ever tell*. Chromium is lenient about the bad header and renders the
+  page in full (40,061 bytes), and `looks_like_a_challenge` is false —
+  nobody is turning us away. But the rendered page carries no Event
+  JSON-LD, which is exactly why `kind='browser'` yields nothing: that kind
+  reads structured data and this page has none. A DOM parser is the only
+  route left. Its shape is still open — `<title>` and `<h1>` both read
+  "Monday, 31 August 2026", so `/calendar` looks like a **single-day**
+  view, in which case the date belongs to the page and not to each row.
 - **`slugdate.py` reads dates out of a URL** — "evening-airshow-15-september-2026".
   It was written for Shuttleworth and does **not** apply there: measured
   30 Aug 2026, that sitemap holds 374 URLs and **none** carries a date, so
@@ -306,9 +324,15 @@ daysout/
   without that evidence is a guess — `slugdate.py` is what that costs.
   When a new site needs reading, add a step to `deploy.yml` that prints
   what its pages carry, push, and write the parser against the output.
-  Patterns since verified on the house server (30 Aug 2026): English
+  Patterns since verified on the house server (30-31 Aug 2026): English
   Heritage 392 places / 116 events, Historic Houses 579 places, National
-  Trust challenged, Stonor 5 events, Shuttleworth 24 events.
+  Trust challenged, Stonor 5 events, Shuttleworth 24 events, UK Craft
+  Fairs unfetchable but renderable.
+  A diagnostic that needs a plain fetch to succeed first is one that
+  cannot report on a site whose plain fetch never will: `inspect_dom`
+  scans the served page before the rendered one and returns on the
+  failure, so the whole UK Craft Fairs render went unreported for a
+  deploy. Where the point is the rendered page, render it directly.
 - `RequireConfigured` in `App.jsx` must stay a render-time component:
   computing "is a postcode configured" in App's body is stale after
   navigation (App doesn't re-render on route changes).

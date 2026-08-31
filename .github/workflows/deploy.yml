@@ -288,81 +288,108 @@ jobs:
             --url https://www.shuttleworth.org/ --scan-newest --skip-probes || true
 
       - name: What UK Craft Fairs actually serves
-        # The row has been kind='browser' since discovery found no
-        # structured data in the served HTML, and the browser kind reads
-        # Event JSON-LD and nothing else — so if rendering still produces
-        # none, this source contributes nothing until someone writes a DOM
-        # parser for it. Whether that is worth writing, and what it should
-        # anchor on, are questions only the house server can answer.
+        # Settled on the house server 31 Aug 2026, and not worth asking
+        # again: every plain fetch of this host times out. The server sends
+        # a malformed header block — "Strict Transport Security:" with
+        # spaces where the hyphens belong — so http.client never finds the
+        # separator between headers and body and the read hangs until the
+        # timeout, though the response carries a good Content-Length (14756
+        # for /calendar). That killed robots.txt, both sitemap paths, all
+        # four wp-json routes and all nine conventional feed paths: nine of
+        # the last run's eleven minutes spent proving the same thing
+        # thirteen times over. So this step no longer asks.
         #
-        # Four of them, in the order that can stop the work early:
-        # 1. Does a plain fetch work at all? The seeded note says the
-        #    server returns malformed HTTP headers, recorded from a single
-        #    run in Aug 2026 and never re-checked. A parser built around a
-        #    problem that has since been fixed is worse than no parser.
-        # 2. Is it a bot-protection challenge? That is the site saying no,
-        #    and the answer is to stop and record it — never to render
-        #    past it, as with National Trust.
-        # 3. Is there a feed or an events API? A documented API beats
-        #    every kind of scraping and would make a parser unnecessary.
-        # 4. Only if it is freely served and has no feed: what does the
-        #    rendered calendar hold — dates, event links, or nothing?
+        # The renderer does work — Chromium is lenient about the bad header
+        # and returns 40,061 bytes. The site is not refusing us: there is no
+        # challenge, just a broken server. But the rendered page carries no
+        # Event JSON-LD, which is exactly why kind='browser' contributes
+        # nothing, that kind reading structured data and this page having
+        # none. So a hand-written DOM parser is the only route left, and
+        # this step gathers what one needs to be written against.
+        #
+        # The open question is the page's shape. Its <title> and <h1> both
+        # read "Monday, 31 August 2026", so /calendar looks like a
+        # single-day view — in which case the date comes from the heading
+        # rather than from each row, and the parser needs whatever URL asks
+        # for another day. Hence the link dump.
         continue-on-error: true
         run: |
           cd /opt/daysout/scraper
-          CAL=https://www.ukcraftfairs.com/calendar
-
-          echo "########## does a plain fetch work, and is it a refusal?"
           sudo env DAYSOUT_DATA=/var/lib/daysout python3 -c "
-          import sys; sys.path.insert(0, '.')
-          from daysout_scraper.fetch import Fetcher
-          from daysout_scraper.sources.national_trust import looks_like_a_challenge
-
-          URL = '$CAL'
-          fetcher = Fetcher('/var/lib/daysout/scrape-cache')
-          print('robots.txt allows it:', fetcher._allowed(URL))
-          try:
-              body = fetcher.get(URL, fresh=True)
-          except Exception as e:
-              print('PLAIN FETCH FAILED:', type(e).__name__, e)
-              raise SystemExit(0)
-          print('bytes:', len(body))
-          print('bot-protection challenge:', looks_like_a_challenge(body))
-          print('--- first 300 bytes:')
-          print(body[:300])" || true
-
-          echo "########## a feed or an API would beat every kind of scraping"
-          sudo env DAYSOUT_DATA=/var/lib/daysout \
-            python3 -m daysout_scraper.feedhunt \
-              --url https://www.ukcraftfairs.com/ --scan-newest || true
-
-          echo "########## what the calendar carries, un-rendered vs rendered"
-          # --fresh: a cached render cannot say what the site returns now,
-          # and reading a stale copy while believing otherwise is how the
-          # scrolling change came back with identical byte counts.
-          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -m daysout_scraper.discover \
-            --url "$CAL" --browser --deep --fresh || true
-
-          echo "########## where the dates sit, if they are there at all"
-          # date_context anchors a date to the element carrying it, which
-          # is what found Shuttleworth's. A listing page repeats its own
-          # furniture, so "the page has date-looking text" is not on its
-          # own an answer — the anchor is.
-          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -c "
-          import sys; sys.path.insert(0, '.')
+          import re, sys; sys.path.insert(0, '.')
+          from bs4 import BeautifulSoup
           from daysout_scraper.fetch import Fetcher
           from daysout_scraper import browser, domscan
+          from daysout_scraper.sources.national_trust import looks_like_a_challenge
 
-          URL = '$CAL'
+          URL = 'https://www.ukcraftfairs.com/calendar'
           if not browser.available():
-              print('playwright is not installed — rendered scan skipped')
+              print('playwright is not installed — nothing to report')
               raise SystemExit(0)
+
           fetcher = Fetcher('/var/lib/daysout/scrape-cache')
+          # One fresh render, read by every scanner below. The last run let
+          # discover.inspect_dom do it, and its plain-fetch scan raised
+          # first, so the rendered half never printed at all.
           with browser.Renderer(fetcher.session.headers['User-Agent']) as renderer:
               fetcher.renderer = renderer
-              body = fetcher.get(URL, render=True)
-          print(len(body), 'bytes rendered')
-          print(domscan.describe_date_context(domscan.date_context(body, limit=12)))" || true
+              body = fetcher.get(URL, render=True, fresh=True)
+          soup = BeautifulSoup(body, 'html.parser')
+          print(len(body), 'bytes rendered | challenge:', looks_like_a_challenge(body))
+
+          print()
+          print('=== what a parser would have to work with')
+          print(domscan.describe(domscan.scan(body, URL)))
+
+          print()
+          print('=== structure: where the fair rows are, if they are here')
+          print(domscan.describe_deep(domscan.deep_scan(body)))
+
+          print()
+          print('=== every link that might ask for another day')
+          DAY = re.compile(r'calendar|date|day|20[0-9][0-9]', re.I)
+          seen = set()
+          for anchor in soup.find_all('a', href=True):
+              href = anchor['href']
+              if not DAY.search(href) or href in seen:
+                  continue
+              seen.add(href)
+              print('   ', href[:110], ' <- ', anchor.get_text(' ', strip=True)[:50])
+              if len(seen) >= 30:
+                  break
+          if not seen:
+              print('    none — no other day is reachable by a link')
+
+          print()
+          print('=== where each date sits')
+          print(domscan.describe_date_context(domscan.date_context(body, limit=12)))
+
+          print()
+          print('=== the markup around each dated <strong>')
+          # 29 and 27 August appeared on a page headed 31 August, so these
+          # are not the day's fairs. Whatever they are, the surrounding
+          # markup says — and if they turn out to be event rows, that block
+          # is what a parser anchors on.
+          shown = 0
+          for element in soup.find_all('strong'):
+              text = element.get_text(' ', strip=True)
+              if not domscan.DATE_TEXT_RE.search(text):
+                  continue
+              # Climb to the first ancestor big enough to be a row, at
+              # most three levels. Testing the parent's size instead
+              # climbed to <html> on anything short.
+              block = element
+              for _ in range(3):
+                  if block.parent is None or len(block.get_text(' ', strip=True)) >= 60:
+                      break
+                  block = block.parent
+              print('--- <strong>', text[:40])
+              print('   ', ' '.join(str(block)[:700].split()))
+              shown += 1
+              if shown >= 4:
+                  break
+          if not shown:
+              print('    no dated <strong> on this render')" || true
 
       - name: Hunt for a sanctioned route into National Trust events
         # The pages are closed to us and we do not work around that, so
