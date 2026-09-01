@@ -261,9 +261,9 @@ daysout/
   probes the URL via `discover.py` and picks, trying `wpevents` first
   because a documented API beats every kind of scraping.
 - **An iCal feed needs no parser of ours.** `ical.py` reads RFC 5545 and
-  `kind='ical'` runs it, so a site publishing .ics is an INSERT — IACF's
-  three showground fairs (`iacf-newark`, `iacf-ardingly`,
-  `iacf-shepton-mallet`) are the case in point. Three things about the
+  `kind='ical'` runs it, so a site publishing .ics is an INSERT — IACF is
+  the case in point, as one row (`iacf`) reading the combined feed its own
+  calendar page links as "Add all iacf fairs to my calendar". Three things about the
   format bite. An all-day `DTEND` is **exclusive**, so a fair running the
   2nd to the 3rd is published as ending on the 4th. Long lines are folded
   as CRLF plus **one** inserted space, so unfolding a fold at a word gap
@@ -272,15 +272,23 @@ daysout/
   text straight into `SUMMARY`/`DESCRIPTION` with HTML entities still in
   it, so `_unescape` decodes those as well as RFC 5545's own escaping.
   Their URLs are query strings (`?feed=...`), so the kind is set
-  explicitly: `auto` would probe one as a web page. Each is one venue, so
-  the row carries `venue_name`/`venue_postcode` as a fallback for events
-  whose LOCATION omits the address. Measured on the house server 31 Aug
-  2026: all three slugs are right, all three postcodes geocode where they
-  should, and Newark and Ardingly repeat the full address in every
-  LOCATION so the fallback never fires for them. Shepton Mallet answers
-  with a valid calendar listing **no** fairs — a real answer, so
-  `_from_ical` says so rather than leaving the pipeline's "unreachable,
-  blocked, or its patterns are wrong" as the only word on it.
+  explicitly: `auto` would probe it as a web page. Shepton Mallet's own
+  feed answered with a valid calendar listing **no** fairs — a real
+  answer, so `_from_ical` says so rather than leaving the pipeline's
+  "unreachable, blocked, or its patterns are wrong" as the only word.
+- **One IACF row, not one per venue.** Measured 1 Sep 2026: the site has
+  no events API (every `wp-json` event route 404s), its calendar page
+  carries no Event JSON-LD and its sitemap no event URLs — but that page
+  links `?feed=iacf-all-events-ical`, offered for exactly this. IACF runs
+  more than the three venues first seeded: Newark, Ardingly, Shepton
+  Mallet, Builth Wells, Norfolk, Runway and Newbury. The per-venue rows
+  are `RETIRED`, not `SUPERSEDED` — no code source takes those names, and
+  their events must go with them, since nothing refreshes an event whose
+  row is gone and the same fairs would sit in the list twice.
+  A row spanning seven showgrounds **cannot carry a fallback venue**: a
+  single `venue_postcode` would put a Welsh fair at a Nottinghamshire
+  postcode, so `venue_name`/`venue_postcode` are left blank and an event
+  whose LOCATION omits the postcode is dropped and named in the log.
 - **A multi-day fair may be published as one event per day.** IACF's
   feeds carry "…Fair: 10-11 December" twice, dated the 10th and the 11th,
   and stored as they arrive that shows every fair twice on the events

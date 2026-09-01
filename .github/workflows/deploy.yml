@@ -388,125 +388,69 @@ jobs:
           runlock.acquire(PATH, wait_seconds=0)
           print('OK: the lock is released when the holder exits')" || true
 
-      - name: What the IACF antiques fair calendar carries
-        # The three per-venue iCal rows are to become one source reading
-        # https://www.iacf.co.uk/antiques-fair-calendar/, so that every
-        # venue is covered rather than the three we happen to have feeds
-        # for. What that source should be is not yet known, and asking is
-        # cheaper than guessing at markup twice.
+      - name: What the combined IACF feed carries
+        # Settled on the house server 1 Sep 2026, so no longer asked:
+        # there is no events API behind this site (every wp-json event
+        # route 404s), its calendar page carries no Event JSON-LD, and its
+        # sitemap holds no event URLs at all. What the calendar page does
+        # carry is a link the site offers for exactly this purpose —
+        # "Add all iacf fairs to my calendar",
+        # ?feed=iacf-all-events-ical — so the source is that feed and
+        # there is no page to parse.
         #
-        # In the order that can end the work early:
-        #
-        # 1. The WordPress events API. Those "?feed=iacf-...-events-ical"
-        #    addresses are The Events Calendar's own iCal export, so the
-        #    plugin is on this site; if its REST API answers, every fair
-        #    at every venue arrives as dated, located JSON and the whole
-        #    parser is an INSERT with kind='wpevents'. Far better than
-        #    reading a calendar page, and it does not break on a restyle.
-        # 2. Failing that, what the calendar page itself holds — Event
-        #    JSON-LD, the repeated block a listing row lives in, and the
-        #    links to each fair's own page.
-        #
-        # The settled facts about the feeds (slugs, postcodes, the per-day
-        # publishing) are in CLAUDE.md and are not re-proved here.
+        # One thing is still open and it decides whether a fair appears at
+        # all. This row spans seven showgrounds, so unlike the per-venue
+        # rows it has no single address to fall back on: every event must
+        # carry its own postcode in LOCATION, and the pipeline drops the
+        # ones that do not. Newark and Ardingly repeat the full address;
+        # Builth Wells, Norfolk, Runway, Newbury and Shepton Mallet are
+        # unknown. Name them.
         continue-on-error: true
         run: |
           cd /opt/daysout/scraper
-
-          echo "########## is there an events API? (this would replace the parser)"
-          sudo env DAYSOUT_DATA=/var/lib/daysout \
-            python3 -m daysout_scraper.feedhunt \
-              --url https://www.iacf.co.uk/ --scan-newest || true
-
-          echo
-          echo "########## the calendar page itself"
           sudo env DAYSOUT_DATA=/var/lib/daysout python3 -c "
-          import json, sys; sys.path.insert(0, '.')
-          from urllib.parse import urljoin
-          from bs4 import BeautifulSoup
+          import sys; sys.path.insert(0, '.')
           from daysout_scraper.fetch import Fetcher
-          from daysout_scraper import domscan, jsonld
-          from daysout_scraper.sources.national_trust import looks_like_a_challenge
+          from daysout_scraper import ical, postcode as postcodes
 
-          URL = 'https://www.iacf.co.uk/antiques-fair-calendar/'
+          URL = 'https://www.iacf.co.uk/?feed=iacf-all-events-ical'
           fetcher = Fetcher('/var/lib/daysout/scrape-cache')
-          print('robots.txt allows it:', fetcher._allowed(URL))
           try:
               body = fetcher.get(URL, fresh=True)
           except Exception as e:
               print('FETCH FAILED:', type(e).__name__, e)
               raise SystemExit(0)
-          soup = BeautifulSoup(body, 'html.parser')
-          print(len(body), 'bytes | challenge:', looks_like_a_challenge(body))
-
-          objects = jsonld.extract_objects(body)
-          events = [jsonld.parse_event(o, URL) for o in objects]
-          events = [e for e in events if e]
-          print('JSON-LD objects:', len(objects), '| Event objects:', len(events))
-          for event in events[:5]:
-              print('   ', event['start_date'], '..', event['end_date'], '|',
-                    event['title'][:50], '@', event['location_name'] or '(none)',
-                    event['location_postcode'] or '')
-
-          print()
-          print('=== what a parser would have to work with')
-          print(domscan.describe(domscan.scan(body, URL)))
-
-          print()
-          print('=== structure: where the rows are')
-          print(domscan.describe_deep(domscan.deep_scan(body)))
-
-          print()
-          print('=== every link that looks like a fair')
-          seen = []
-          for anchor in soup.find_all('a', href=True):
-              href = urljoin(URL, anchor['href'])
-              if 'iacf.co.uk' not in href or href in seen:
-                  continue
-              text = anchor.get_text(' ', strip=True)
-              if not text or len(text) > 90:
-                  continue
-              seen.append(href)
-              print('   ', href[:100], ' <- ', text[:60])
-              if len(seen) >= 30:
-                  break
-
-          print()
-          print('=== where each date sits')
-          print(domscan.describe_date_context(domscan.date_context(body, limit=14)))" || true
-
-          echo
-          echo "########## if the API answered, what one event looks like"
-          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -c "
-          import json, sys; sys.path.insert(0, '.')
-          from daysout_scraper.fetch import Fetcher
-
-          URL = ('https://www.iacf.co.uk/wp-json/tribe/events/v1/events'
-                 '?per_page=5&start_date=2026-09-01')
-          fetcher = Fetcher('/var/lib/daysout/scrape-cache')
-          # Both questions, because they can differ and the difference
-          # decides whether kind='wpevents' would work as it stands:
-          # feeds._events_api_url fetches the API *through* the robots
-          # check, so a site that answers happily but disallows /wp-json
-          # would work here and fail there.
-          print('robots.txt allows /wp-json:', fetcher._allowed(URL))
-          try:
-              payload = json.loads(fetcher.get(URL, api=True, fresh=True))
-          except Exception as e:
-              print('no events API here:', type(e).__name__, str(e)[:120])
+          if 'BEGIN:VCALENDAR' not in body:
+              print('NOT ICALENDAR —', len(body), 'bytes; the feed has moved')
               raise SystemExit(0)
-          events = payload.get('events') or []
-          print('total events the API reports:', payload.get('total'),
-                '| in this page:', len(events))
-          for event in events[:5]:
-              venue = event.get('venue') or {}
-              print('   ', event.get('start_date'), '..', event.get('end_date'),
-                    '|', str(event.get('title'))[:50])
-              print('        venue:', venue.get('venue'), '|',
-                    venue.get('address'), venue.get('city'), venue.get('zip'))
-          if events:
-              print()
-              print('    keys on one event:', sorted(events[0])[:24])" || true
+
+          events = list(ical.parse(body))
+          print(len(body), 'bytes |', len(events), 'fair(s) after joining their days')
+
+          venues = {}
+          for event in events:
+              location = event.get('location_name') or ''
+              found = postcodes.find(location)
+              venues.setdefault(location.split(',')[0].strip() or '(no location)',
+                                [found, 0])[1] += 1
+
+          print()
+          print('=== every venue in the feed, and whether it can be placed')
+          placeable = 0
+          for venue in sorted(venues):
+              found, count = venues[venue]
+              mark = found or 'NO POSTCODE — these fairs are dropped'
+              print(f'    {count:2d} fair(s)  {venue[:44]:44} {mark}')
+              if found:
+                  placeable += count
+          print()
+          print(f'    {placeable} of {len(events)} fair(s) carry a postcode')
+
+          print()
+          print('=== the fairs themselves')
+          for event in sorted(events, key=lambda e: e['start_date'])[:14]:
+              print('   ', event['start_date'], '..', event['end_date'],
+                    '|', event['title'][:60])" || true
 
       - name: Hunt for a sanctioned route into National Trust events
         # The pages are closed to us and we do not work around that, so

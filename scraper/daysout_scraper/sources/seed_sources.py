@@ -31,24 +31,21 @@ CANDIDATES = [
     # Craft, food, music, art.
     ("creative-crafts", "https://www.creativecrafts-online.co.uk/",
      "auto", "craft", "Creative Crafts Association craft and gift fairs"),
-    # IACF's three showground fairs, each publishing an iCal feed — the
-    # nicest thing a source can be: offered for subscription,
-    # machine-readable by design, and nothing to guess at. kind is 'ical'
-    # rather than 'auto' because the URL is a query string ("?feed=...")
-    # that a probe would fetch as a web page.
+    # Every IACF fair, from the one feed the site offers for exactly that:
+    # its calendar page links it as "Add all iacf fairs to my calendar".
+    # That is better than the three per-venue feeds it replaces, because
+    # IACF runs more than three — Newark, Ardingly, Shepton Mallet, Builth
+    # Wells, Norfolk, Runway and Newbury are all linked from that page —
+    # and better than reading the calendar page, which carries no Event
+    # JSON-LD and no events API behind it (measured 1 Sep 2026: every
+    # wp-json event route 404s).
     #
-    # Only the Newark address was given to us. The other two are that
-    # pattern with the venue's name in it, which is a guess until the
-    # deploy says otherwise — a wrong slug reports "no places found"
-    # rather than doing any harm, and the deploy step probes several
-    # spellings of each so a miss can be corrected in one go.
-    ("iacf-newark", "https://www.iacf.co.uk/?feed=iacf-newark-events-ical",
-     "ical", "antiques", "IACF antiques and collectors fair at Newark"),
-    ("iacf-ardingly", "https://www.iacf.co.uk/?feed=iacf-ardingly-events-ical",
-     "ical", "antiques", "IACF antiques and collectors fair at Ardingly"),
-    ("iacf-shepton-mallet",
-     "https://www.iacf.co.uk/?feed=iacf-shepton-mallet-events-ical",
-     "ical", "antiques", "IACF antiques and collectors fair at Shepton Mallet"),
+    # No venue_name/venue_postcode here, unlike the per-venue rows: one
+    # source covering many showgrounds has no single address to fall back
+    # on, so each event must carry its own in LOCATION. Newark and
+    # Ardingly do; the deploy step says which of the rest do.
+    ("iacf", "https://www.iacf.co.uk/?feed=iacf-all-events-ical",
+     "ical", "antiques", "IACF antiques and collectors fairs, every venue"),
     ("festival-calendar-art", "https://www.thefestivalcalendar.co.uk/art-festivals.php",
      "auto", "art", "The Festival Calendar: art festivals"),
     ("festival-calendar-food", "https://www.thefestivalcalendar.co.uk/food-festivals.php",
@@ -85,9 +82,9 @@ URL_FIXES = [
 # whether the feed's own LOCATION carries the address is a question the
 # deploy answers. If it does, this fallback never fires.
 VENUES = [
-    ("iacf-newark", "Newark Showground", "NG24 2NY"),
-    ("iacf-ardingly", "South of England Showground", "RH17 6TL"),
-    ("iacf-shepton-mallet", "Royal Bath and West Showground", "BA4 6QN"),
+    # Nothing here at present. The IACF rows that used one are gone: a
+    # source spanning seven showgrounds cannot have a single fallback
+    # address, so its events carry their own.
 ]
 
 # What to show a person instead of the address the scraper fetches. A feed
@@ -99,9 +96,7 @@ VENUES = [
 # here we know exists. Each event carries its own link from the feed, so
 # this is only the row's.
 SITE_URLS = [
-    ("iacf-newark", "https://www.iacf.co.uk/"),
-    ("iacf-ardingly", "https://www.iacf.co.uk/"),
-    ("iacf-shepton-mallet", "https://www.iacf.co.uk/"),
+    ("iacf", "https://www.iacf.co.uk/antiques-fair-calendar/"),
 ]
 
 # Categories corrected after the fact. Applied only where the row still
@@ -109,7 +104,7 @@ SITE_URLS = [
 # only ever inserts, so without this an existing row keeps what it was
 # seeded with for ever.
 CATEGORY_FIXES = [
-    ("iacf-newark", "craft", "antiques"),
+    # Nothing here at present: the row that needed re-filing is retired.
 ]
 
 # Verdicts from running discovery and a sitemap crawl against each site on
@@ -145,6 +140,15 @@ DISABLE = []
 # only ever inserts, so an old row would sit in the table for ever,
 # spending requests and reporting the same failure.
 RETIRED = [
+    # Replaced by the single 'iacf' row above, which reads every venue
+    # from the site's own combined feed. RETIRED rather than SUPERSEDED:
+    # these leave no code source behind to be hidden, and their events
+    # must go with them — nothing would refresh them once the row is
+    # gone, so they would sit in the events list for ever, duplicating
+    # the same fairs the new source now reports.
+    ("iacf-newark", "replaced by the combined iacf feed"),
+    ("iacf-ardingly", "replaced by the combined iacf feed"),
+    ("iacf-shepton-mallet", "replaced by the combined iacf feed"),
     ("brighton-open-houses",
      "no events after rendering: an open-houses trail publishes its dates "
      "in prose on a festival page, not per house"),
