@@ -47,7 +47,16 @@ def _date(value):
 
 
 def parse(text):
-    """Yields dicts with title/start_date/end_date/description/url/location_name/uid."""
+    """Yields dicts with title/start_date/end_date/description/url/location_name/uid.
+
+    A run of days published as one event per day comes back as a single
+    event spanning them: see _merge_runs.
+    """
+    return iter(_merge_runs(_events(text)))
+
+
+def _events(text):
+    """One dict per VEVENT, in feed order."""
 
     text = FOLD_RE.sub("", text)
     event = None
@@ -99,5 +108,54 @@ def _minus_a_day(iso_date):
     try:
         year, month, day = (int(part) for part in iso_date.split("-"))
         return (date(year, month, day) - timedelta(days=1)).isoformat()
+    except ValueError:
+        return iso_date
+
+
+# A fair that runs Saturday and Sunday may be published as two one-day
+# VEVENTs rather than one two-day event, which is what IACF does: its
+# Newark feed carries "…Fair: 10-11 December" twice, dated the 10th and
+# the 11th. Stored as they arrive, the events list shows every fair twice
+# and each copy claims a single day while its own title says otherwise.
+#
+# So join a run of days back together. Only events that agree on both
+# title and location are considered, and only where the days actually
+# touch — a monthly fair with the same name is left as separate events,
+# which is what it is. The feed's order is not relied on: Newark lists
+# December before October.
+def _merge_runs(events):
+
+    events = list(events)
+    order = []
+    groups = {}
+    for event in events:
+        key = (event.get("title", ""), event.get("location_name", ""))
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(event)
+
+    merged = []
+    for key in order:
+        run = sorted(groups[key], key=lambda e: e["start_date"])
+        current = run[0]
+        for nxt in run[1:]:
+            if nxt["start_date"] <= _plus_a_day(current["end_date"]):
+                # Keep the earliest start and the latest end; everything
+                # else stays as the first day published it.
+                current = {**current,
+                           "end_date": max(current["end_date"], nxt["end_date"])}
+                continue
+            merged.append(current)
+            current = nxt
+        merged.append(current)
+    return merged
+
+
+def _plus_a_day(iso_date):
+    from datetime import date, timedelta
+    try:
+        year, month, day = (int(part) for part in iso_date.split("-"))
+        return (date(year, month, day) + timedelta(days=1)).isoformat()
     except ValueError:
         return iso_date

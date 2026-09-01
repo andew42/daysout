@@ -198,13 +198,24 @@ class FeedSource:
 
     def _from_ical(self, fetcher, max_pages):
         text = fetcher.get(self.url)
+        found = 0
         for index, event in enumerate(ical.parse(text)):
             if max_pages and index >= max_pages:
                 break
+            found += 1
             usable = self._event(
                 event, event.get("uid") or f"{event['title']}-{event['start_date']}")
             if usable:
                 yield "event", usable
+
+        if not found:
+            # A calendar with nothing in it is a real answer — IACF's
+            # Shepton Mallet feed is 264 valid bytes listing no fairs —
+            # and the pipeline's "unreachable, blocked, or its patterns
+            # are wrong" would otherwise be the only word on it, which is
+            # three wrong guesses.
+            log.info("%s: the feed is valid and lists no events (%d bytes)",
+                     self.name, len(text))
 
     def _from_jsonld(self, fetcher, render=False):
         body = fetcher.get(self.url, render=render)

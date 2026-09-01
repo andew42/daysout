@@ -274,13 +274,21 @@ daysout/
   Their URLs are query strings (`?feed=...`), so the kind is set
   explicitly: `auto` would probe one as a web page. Each is one venue, so
   the row carries `venue_name`/`venue_postcode` as a fallback for events
-  whose LOCATION omits the address. **Two guesses are still outstanding
-  and the deploy step settles both**: only the Newark feed address was
-  given to us, so the other two slugs are that pattern with the venue's
-  name in it, and all three postcodes were written from memory rather
-  than measured — a real but wrong one would put a fair on the wrong part
-  of the map without ever failing, so the step geocodes each and prints
-  where it lands.
+  whose LOCATION omits the address. Measured on the house server 31 Aug
+  2026: all three slugs are right, all three postcodes geocode where they
+  should, and Newark and Ardingly repeat the full address in every
+  LOCATION so the fallback never fires for them. Shepton Mallet answers
+  with a valid calendar listing **no** fairs — a real answer, so
+  `_from_ical` says so rather than leaving the pipeline's "unreachable,
+  blocked, or its patterns are wrong" as the only word on it.
+- **A multi-day fair may be published as one event per day.** IACF's
+  feeds carry "…Fair: 10-11 December" twice, dated the 10th and the 11th,
+  and stored as they arrive that shows every fair twice on the events
+  list with each copy claiming a single day its own title contradicts.
+  `ical._merge_runs` joins a run back together: same title, same
+  location, and only where the days actually touch, so a monthly fair of
+  the same name stays several events. It sorts before merging rather
+  than trusting the feed's order — Newark lists December before October.
 - **`wpevents` reads The Events Calendar's REST API**
   (`/wp-json/tribe/events/v1/events`), the WordPress plugin a large share
   of UK venues and festivals run. It gives a title, real dates and a venue
