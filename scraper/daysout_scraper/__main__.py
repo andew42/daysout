@@ -15,6 +15,7 @@ from pathlib import Path
 
 from . import browser
 from . import db as dbmod
+from . import runlock
 from . import sources
 from .fetch import USER_AGENT, Fetcher
 from .pipeline import run_source
@@ -47,6 +48,14 @@ def main():
 
     if not Path(args.db).exists():
         sys.exit(f"database {args.db} not found — start the server once to create it")
+
+    # One scrape at a time: the pipeline holds a write transaction for the
+    # whole of a source's crawl, so a second scraper dies on "database is
+    # locked" rather than merely waiting. Held until the process exits.
+    try:
+        lock = runlock.acquire(args.db + ".lock")  # noqa: F841 — held by reference
+    except runlock.Busy as e:
+        sys.exit(f"not scraping: {e}")
 
     db = dbmod.connect(args.db)
     fetcher = Fetcher(args.cache or str(Path(args.db).parent / "scrape-cache"))

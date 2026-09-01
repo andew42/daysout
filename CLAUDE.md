@@ -392,7 +392,24 @@ daysout/
   The rolling release is one mutable tag, deleted and recreated per run,
   so two pushes a minute apart raced and the loser failed with a 403 that
   reads like a permissions problem.
-- **Concurrency**: server and scraper share the DB via WAL mode.
+- **Concurrency**: server and scraper share the DB via WAL mode. Two
+  *scrapers* cannot share it, though: `pipeline.run_source` holds a write
+  transaction for the whole of a source's crawl — `upsert_destination`
+  runs inside the loop and the commit comes after the generator is
+  exhausted — so a source with a few hundred pages holds the lock for
+  minutes, and a second scraper dies on "database is locked" after
+  `db.connect`'s 30 seconds. The timer fires at 05:30 and a deploy landed
+  at 05:42 while it was still going: the deploy's scrape died in
+  `seed_sources.ensure` before reading a single source, and because the
+  Scrape step is `continue-on-error` the deploy went green with the
+  previous day's rows still in the database. `runlock.acquire` now takes
+  an exclusive lock and waits, which is what the Update button needs —
+  pressed during the nightly run it should do the work a moment later
+  rather than refuse. **The dev sandbox does not honour flock between
+  processes** (nor lockf): two processes both take the same exclusive
+  lock and neither waits, while within one process it behaves. So the
+  unit tests cannot prove the case that matters and a deploy step checks
+  it on the house server.
 
 ## Gotchas
 

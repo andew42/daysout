@@ -145,7 +145,16 @@ jobs:
           sudo env DAYSOUT_DATA=/var/lib/daysout \
             python3 -m daysout_scraper $LIMIT --keep-seed 2>&1 \
             | sudo tee /tmp/scrape.log
-          exit "${PIPESTATUS[0]}"
+          STATUS="${PIPESTATUS[0]}"
+          # This step is continue-on-error so the diagnostics below still
+          # run, which once let a deploy go green with a scrape that had
+          # died on "database is locked" and a database still holding the
+          # previous day's rows. Say so where it will be seen.
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::error::the scrape exited $STATUS — the database was NOT refreshed"
+            tail -20 /tmp/scrape.log
+          fi
+          exit "$STATUS"
 
       - name: Events that found no venue
         # An event whose venue matches no destination is dropped, so a
@@ -329,6 +338,55 @@ jobs:
                     f'  @ {row[\"venue_name\"]}')
           if not rows:
               print('NONE PARSED — the row markup has changed, or the render failed')" || true
+
+      - name: Check two scrapes cannot run at once
+        # The daily timer fires at 05:30 and a deploy landed at 05:42 while
+        # it was still going: the second scraper waited db.connect's 30
+        # seconds and died on "database is locked" inside
+        # seed_sources.ensure, before reading a single source. The Scrape
+        # step is continue-on-error, so that deploy went green with a
+        # crashed scrape inside it and the database kept the old rows.
+        #
+        # runlock fixes it, and this is the only place the fix can be
+        # tested: the development sandbox does not honour flock between
+        # processes at all — two of them take the same exclusive lock and
+        # neither waits — so a green unit test there proves nothing about
+        # the case that matters. Ask the real filesystem.
+        continue-on-error: true
+        run: |
+          cd /opt/daysout/scraper
+          sudo python3 -c "
+          import subprocess, sys, time
+          sys.path.insert(0, '.')
+          from daysout_scraper import runlock
+
+          PATH = '/tmp/daysout-runlock-check'
+
+          holder = subprocess.Popen(
+              [sys.executable, '-c',
+               'import sys, time; sys.path.insert(0, \".\");'
+               ' from daysout_scraper import runlock;'
+               ' held = runlock.acquire(\"' + PATH + '\");'
+               ' print(\"holding\", flush=True); time.sleep(10)'],
+              stdout=subprocess.PIPE, text=True)
+          holder.stdout.readline()   # wait until it really holds the lock
+
+          started = time.monotonic()
+          try:
+              runlock.acquire(PATH, wait_seconds=3)
+          except runlock.Busy:
+              waited = time.monotonic() - started
+              print(f'OK: the second scraper was kept out, waiting {waited:.0f}s')
+          else:
+              print('BROKEN: both processes hold the lock —'
+                    ' two scrapes could run at once here')
+          finally:
+              holder.kill()
+
+          # And it must be free again once the holder is gone.
+          holder.wait()
+          runlock.acquire(PATH, wait_seconds=0)
+          print('OK: the lock is released when the holder exits')" || true
 
       - name: What the IACF iCal feeds carry
         # A .ics feed needs no parser of ours — ical.py reads it and the
