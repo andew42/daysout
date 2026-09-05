@@ -18,11 +18,6 @@ from .. import db as dbmod
 CANDIDATES = [
     # Gardens — open days are inherently dated, which is exactly what the
     # events view wants.
-    ("ngs-open-gardens", "https://ngs.org.uk/gardens-open-this-coming-week/",
-     "auto", "garden", "National Garden Scheme open gardens this week"),
-    ("ngs-find-a-garden", "https://ngs.org.uk/find-a-garden/",
-     "auto", "garden", "National Garden Scheme garden search"),
-
     # Privately owned houses open to the public — the gap left by the
     # National Trust and English Heritage.
     ("invitation-to-view", "https://www.invitationtoview.co.uk/",
@@ -117,8 +112,6 @@ CATEGORY_FIXES = [
 # with a bot-protection challenge, which is a no; it stays disabled and must
 # not be given kind='browser'.
 BROWSER = [
-    ("ngs-open-gardens", "listing built client-side; retry rendered"),
-    ("ngs-find-a-garden", "garden search is client-side; retry rendered"),
     ("invitation-to-view", "listing built client-side; retry rendered"),
     ("creative-crafts", "listing built client-side; retry rendered"),
     ("festival-calendar-art", "listing built client-side; retry rendered"),
@@ -148,6 +141,14 @@ RETIRED = [
     ("brighton-open-houses",
      "no events after rendering: an open-houses trail publishes its dates "
      "in prose on a festival page, not per house"),
+    # The second of the two NGS rows. RETIRED rather than SUPERSEDED
+    # because no code source takes *this* name — 'ngs-open-gardens' does,
+    # and it reads the same gardens from the find-a-garden API, so leaving
+    # this row would crawl the same scheme a worse way under a second name
+    # and list every garden twice.
+    ("ngs-find-a-garden",
+     "the same gardens now come from the find-a-garden API under "
+     "ngs-open-gardens"),
 ]
 
 # Candidates a built-in parser now handles. The generic feed row has to go
@@ -164,6 +165,9 @@ SUPERSEDED = [
     ("food-festivals-uk",
      "now read by the built-in parser: the roundup's own markup for dates, "
      "and the places gazetteer for towns it never gives a postcode for"),
+    ("ngs-open-gardens",
+     "now read by the built-in parser, from the find-a-garden JSON API "
+     "rather than the hub page of regional links this row pointed at"),
 ]
 
 

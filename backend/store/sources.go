@@ -97,7 +97,7 @@ func sourceTimestamp() string {
 var CodeSources = []string{
 	"wikidata", "english_heritage", "national_trust", "historic-houses",
 	"shuttleworth-events", "uk-craft-fairs", "lamport-hall", "waddesdon",
-	"food-festivals-uk",
+	"food-festivals-uk", "ngs-open-gardens",
 }
 
 // sourcesQuery lists every source the scraper has, with what each one is

@@ -26,7 +26,7 @@ daysout/
 │   ├── daysout_scraper/sources/  national_trust, english_heritage,
 │   │                             historic_houses, shuttleworth,
 │   │                             ukcraftfairs, lamporthall, waddesdon,
-│   │                             foodfestivals
+│   │                             foodfestivals, ngs
 │   └── tests/         fixture-based; python3 -m unittest discover tests
 ├── setup/             One-off data population (postcodes, places, map tiles)
 ├── packaging/         systemd units + timer + install.sh
@@ -268,6 +268,44 @@ daysout/
   gazetteer: 124 dated, **80 linked at 68 venues**, up from nothing, and
   six spot-checks land within 1.4 km of the right town. The rest name a
   country house or only a county and are dropped and named in the log.
+- **NGS open gardens** (`sources/ngs.py`) is the best-shaped data here and
+  the clearest case of a diagnostic being right while its conclusion was
+  wrong. Two rows were seeded at ngs.org.uk pages and switched to
+  `kind='browser'` because rendering `/gardens-open-this-coming-week/`
+  added 130 KB of Cookiebot tables and no gardens. All true — but measured
+  5 Sep 2026, **that page is not a listing**: it is a hub of regional
+  links ("East of England — Click here"), so there were never gardens on
+  it to render, and rendering the wrong page harder was never going to
+  help. **Ask what a page is before asking why it will not parse.**
+  Following those links leaves ngs.org.uk for a separate app at
+  findagarden.ngs.org.uk, whose Vue bundle names its own JSON API —
+  `https://api.findagarden.ngs.org.uk/api`, with `/gardens`,
+  `/gardens/filters`, `/geocode`. One request returns every listed garden
+  with name, **postcode**, description, tags, **real coordinates** and its
+  dated openings: no rendering, no geocoding, nothing parsed out of prose.
+  ngs.org.uk's robots.txt disallows its own faceted-search query strings,
+  the usual crawler trap; findagarden serves no robots.txt, and this reads
+  one endpoint once rather than crawling facets.
+  **An opening is a day or it is a window, and only one is an event.** The
+  feed mixes both, separated by an undocumented `garden_opening_type_id`,
+  so the rule is what the dates say instead: across all 2,342 records,
+  types 1/2/5 are **100% same-day** (1,889 of them) while 3/4 run a median
+  182 days and up to 364 — "by arrangement", a season in which you may ring
+  the owner, not a day anyone can turn up. Same start and end means an
+  event; longer does not. That needs no knowledge of the enum and survives
+  a sixth type appearing. Cancelled openings are flagged and kept by the
+  feed, so they are skipped explicitly, as are past ones — and a garden
+  with no future day is not published as a place at all, since an NGS
+  garden is somebody's private garden and a pin for one that never opens
+  is a pin for somewhere you cannot go. Events link to their garden **by
+  the feed's id** through `link_event`, not by name: two gardens really
+  are called The Old Vicarage, and name-matching would put one's open day
+  two hundred miles away. Measured 5 Sep 2026: 624 gardens listed, **214
+  with a future open day, 461 openings, 461/461 linked**, every one with a
+  postcode and inside the UK. The old `ngs-find-a-garden` row is RETIRED
+  (no code source takes that name and its rows must go, or the same
+  gardens appear twice); `ngs-open-gardens` is SUPERSEDED, since the code
+  source takes that name.
 - **A code source and a `sources` row must never share a name**: both lists
   run in one pass and the loser overwrites the winner's result.
   `CodeSources` in `backend/store/sources.go` names the code sources so a
@@ -432,6 +470,13 @@ daysout/
   and repeated row-shaped blocks. That diagnostic answered the NGS case:
   the 130 KB rendering added was **Cookiebot's own cookie tables** — 94,
   75, 75, 74 repeated `CybotCookiebot*` blocks — and no gardens at all.
+  Worth knowing how that ended, because the measurement was right and the
+  conclusion drawn from it was not: there were no gardens in the rendering
+  because there were none on the page. It is a hub of regional links, not
+  a listing. "Rendering adds nothing" answers *how* a page is built and
+  says nothing about whether it is the right page — so when a scan comes
+  back empty, read what the page actually is before reaching for a
+  heavier tool. See `sources/ngs.py`.
 - **The renderer answers cookie banners and scrolls.** A consent manager
   holds back the scripts that draw a listing until a choice is made, and a
   banner governs cookies rather than access, so answering one is what

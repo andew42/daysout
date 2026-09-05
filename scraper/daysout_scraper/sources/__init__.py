@@ -23,6 +23,7 @@ from .foodfestivals import FoodFestivals
 from .historic_houses import HistoricHouses
 from .lamporthall import LamportHall
 from .national_trust import NationalTrust
+from .ngs import NGS
 from .shuttleworth import Shuttleworth
 from .ukcraftfairs import UKCraftFairs
 from .waddesdon import Waddesdon
@@ -30,7 +31,7 @@ from .wikidata import Wikidata
 
 IMPLEMENTED = [Wikidata, EnglishHeritage, NationalTrust, HistoricHouses,
                Shuttleworth, UKCraftFairs, LamportHall, Waddesdon,
-               FoodFestivals]
+               FoodFestivals, NGS]
 
 # Researched, not yet implemented:
 #   ngs.py       National Garden Scheme open days (garden events)
