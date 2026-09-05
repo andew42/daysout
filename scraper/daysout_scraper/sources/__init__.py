@@ -20,7 +20,8 @@ than crawled. UK Craft Fairs can only be rendered, never fetched, because
 its server's headers are malformed. Food festivals is a blog roundup with
 no postcode anywhere, placed by town through the gazetteer. IACF is one
 iCal feed covering seven showgrounds. RHS is five big shows, each with
-Event JSON-LD on its own page and none on the listing.
+Event JSON-LD on its own page and none on the listing, and Stonor is one
+house whose API lists its events and dates none of them.
 See each module's docstring.
 """
 
@@ -32,13 +33,14 @@ from .lamporthall import LamportHall
 from .ngs import NGS
 from .rhs import RHS
 from .shuttleworth import Shuttleworth
+from .stonor import Stonor
 from .ukcraftfairs import UKCraftFairs
 from .waddesdon import Waddesdon
 from .wikidata import Wikidata
 
 IMPLEMENTED = [Wikidata, EnglishHeritage, HistoricHouses, Shuttleworth,
                UKCraftFairs, LamportHall, Waddesdon, FoodFestivals, NGS,
-               IACF, RHS]
+               IACF, RHS, Stonor]
 
 # Researched, not yet implemented:
 #   airfields.py air show calendars

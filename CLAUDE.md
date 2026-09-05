@@ -26,7 +26,7 @@ daysout/
 │   ├── daysout_scraper/sources/  wikidata, english_heritage,
 │   │                             historic_houses, shuttleworth,
 │   │                             ukcraftfairs, lamporthall, waddesdon,
-│   │                             foodfestivals, ngs, iacf, rhs
+│   │                             foodfestivals, ngs, iacf, rhs, stonor
 │   └── tests/         fixture-based; python3 -m unittest discover tests
 ├── setup/             One-off data population (postcodes, places, map tiles)
 ├── packaging/         systemd units + timer + install.sh
@@ -336,6 +336,37 @@ daysout/
   with a future open day, 461 openings, 461/461 linked**, every one with a
   postcode and inside the UK. Both seeded NGS rows are gone with the table
   that held them.
+- **Stonor** (`sources/stonor.py`) is where the day-first date lesson came
+  from, and it now needs reading a third way. It was a `wpevents` row while
+  the site ran The Events Calendar; measured 5 Sep 2026 that route 404s and
+  the plugin has gone. The site registers its own `events` post type, so
+  `/wp-json/wp/v2/events` lists six events and their links — with **no
+  `meta` and no `acf`**, so the API gives the index and not one date. The
+  dates are on the pages as Event JSON-LD with a full address, so the API
+  is the index and each page the detail: the UK Craft Fairs division
+  arrived at from the opposite end, because here it is the API that is
+  thin rather than the listing. `startDate` is `"19/09/2026"` — day-first
+  and slashed, the shape that once put five Stonor events in the database
+  as "02/05/2026", sorting before every real date and failing
+  `end_date >= today` while the run reported them linked. Nothing slices a
+  date: `jsonld.parse_event` goes through `dates.to_iso`. Measured live:
+  6/6 events at Stonor Park, RG9 6HF.
+- **A source that is deleted leaves its rows behind**, and `purge_stale`
+  will not take them: that only removes what a *running* source stopped
+  reporting. The house server was still serving events from sources
+  retired days earlier — national_trust, three per-venue IACF rows, the
+  festival-calendar candidates — and still listing their `scrape_runs` in
+  `/api/status` as though they were sources.
+  `db.purge_unknown_sources` removes anything whose source is not in
+  `sources.IMPLEMENTED`, called from `__main__` **only after a run that
+  read every source**: one told to run a single source knows nothing about
+  the rest, the same reason a bounded run never purges. It lives in the
+  scraper rather than the server because that is where the list of sources
+  actually is — putting it in Go would mean deleting rows on the strength
+  of `CodeSources`, a second list that can drift. Two things it must not
+  touch: the demo `seed` rows, which have their own purge that waits for a
+  real source to have data, and a venue a surviving source still has
+  events at, since destinations cascade to their events.
 - **Every source is written in code, and that is the second answer to this
   question.** Sources used to live in a `sources` table — (name, url, kind,
   category, enabled) — which `sources/feeds.py` turned into a runnable

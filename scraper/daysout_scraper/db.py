@@ -180,6 +180,50 @@ def purge_seed(db):
         db.execute("DELETE FROM events WHERE source = 'seed'")
 
 
+def purge_unknown_sources(db, known):
+    """Remove everything left by a source that no longer exists.
+
+    `purge_stale` only ever removes rows a *running* source stopped
+    reporting, so a source that is deleted outright leaves its events and
+    venues behind with nothing to refresh or remove them. The house server
+    was still serving events from sources retired days earlier —
+    national_trust, three per-venue IACF rows, a handful of listing sites
+    — and their scrape_runs history was still being reported by /api/status
+    as though they were sources.
+
+    Only ever called for a run that read every source: one told to run a
+    single source knows nothing about the rest, the same reason a bounded
+    run never purges.
+
+    Venues go only when no surviving event still sits at them, since
+    another source may have adopted a place this one introduced. Returns
+    (sources, events, destinations) removed, for the log.
+    """
+    placeholders = ",".join("?" * len(known))
+    names = [row[0] for row in db.execute(
+        f"SELECT DISTINCT source FROM ("
+        f"  SELECT source FROM events UNION"
+        f"  SELECT source FROM destinations UNION"
+        f"  SELECT source FROM scrape_runs)"
+        f" WHERE source NOT IN ({placeholders}) AND source != 'seed'",
+        tuple(known))]
+    if not names:
+        return 0, 0, 0
+
+    events = destinations = 0
+    for name in names:
+        events += db.execute(
+            "DELETE FROM events WHERE source = ?", (name,)).rowcount
+        destinations += db.execute(
+            "DELETE FROM destinations WHERE source = ?"
+            " AND id NOT IN (SELECT destination_id FROM events)",
+            (name,)).rowcount
+        db.execute("DELETE FROM scrape_runs WHERE source = ?", (name,))
+    log.info("removed %d source(s) that no longer exist: %s",
+             len(names), ", ".join(sorted(names)))
+    return len(names), events, destinations
+
+
 def ensure_venue(db, source, name, postcode, category="venue", url="",
                  places=()):
     """Make sure a destination exists for an event's venue, creating it from

@@ -108,6 +108,15 @@ def main():
     if any_ok and not args.keep_seed:
         dbmod.purge_seed(db)
         db.commit()
+
+    # A source that is deleted outright leaves its rows behind: purge_stale
+    # only removes what a *running* source stopped reporting. Done here
+    # rather than in the server because this is where the list of sources
+    # actually is, and only for a run that read all of them — one asked for
+    # a single source knows nothing about the rest.
+    if any_ok and not wanted and not args.max_pages:
+        dbmod.purge_unknown_sources(db, [s.name for s in sources.IMPLEMENTED])
+        db.commit()
     db.close()
     sys.exit(0 if any_ok else 1)
 
