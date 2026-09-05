@@ -41,6 +41,19 @@ CREATE TABLE IF NOT EXISTS postcodes (
     lon      REAL NOT NULL
 );
 
+-- Place name -> coordinates, for a listing that names a town and no
+-- postcode. Filled by setup/import_places.py from Wikidata (CC0).
+--
+-- Only names that identify ONE settlement are in here: the import drops
+-- anything ambiguous (there are twenty Middletons), because a venue put in
+-- the wrong county is worse than one the map never shows. So a hit is
+-- always safe to use and the lookup needs no tie-breaking.
+CREATE TABLE IF NOT EXISTS places (
+    name TEXT PRIMARY KEY,
+    lat  REAL NOT NULL,
+    lon  REAL NOT NULL
+);
+
 -- Where events come from. Kept in the database rather than in code so a new
 -- listing site is a row, not a release: the scraper reads this table and
 -- picks an extractor by kind.

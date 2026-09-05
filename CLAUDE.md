@@ -7,7 +7,7 @@ UI entirely from local data (SQLite + a PMTiles map archive), and a
 separate Python scraper refreshes the database on a daily systemd timer.
 Runs in an LXD container. Design principle: **nothing external at serve
 time** — no map providers, no geocoding APIs, no paid services; only the
-scraper (and three one-off setup downloads) ever touch the internet.
+scraper (and four one-off setup downloads) ever touch the internet.
 
 ## Repository layout
 
@@ -27,7 +27,7 @@ daysout/
 │   │                             historic_houses, shuttleworth,
 │   │                             ukcraftfairs, lamporthall, waddesdon
 │   └── tests/         fixture-based; python3 -m unittest discover tests
-├── setup/             One-off data population (postcodes, map tiles)
+├── setup/             One-off data population (postcodes, places, map tiles)
 ├── packaging/         systemd units + timer + install.sh
 └── .github/workflows/
     ├── build.yml   CI → rolling `latest` release
@@ -41,6 +41,32 @@ daysout/
   `postcodes` table by `setup/import_postcodes.py`, which implements the
   OSGB36→WGS84 conversion from the OS guide (self-test: `--self-test`).
   Geocoding falls back to outward-district centroid ("SN13" works).
+- **Town → coordinates, when there is no postcode at all.** Some listings
+  never print an address: "Ludlow Food Festival, Shropshire" is all you
+  get, and `ensure_venue` used to drop every such event, so those sources
+  contributed nothing however good their dates were. `setup/import_places.py`
+  fills a `places` table from Wikidata (CC0 — the same source and licence
+  the scraper already uses for destinations), and `db.geocode_place` is the
+  fallback `ensure_venue` tries when a postcode is missing *or* unknown. A
+  postcode still wins: it is a doorstep and a town is a centroid, which is
+  the right order of accuracy for rings measured in tens of kilometres but
+  not for anything finer. **Only unambiguous names are imported** — there
+  are twenty Middletons, and an event at the wrong one is worse than one
+  the map never shows, the same reasoning that makes `dates.to_iso` refuse
+  a date rather than approximate it. Names within `SAME_PLACE_KM` of each
+  other are folded into one row, since duplicate Wikidata entries for a
+  single town are common; genuinely different places sharing a name are
+  dropped (~1,900 of ~24,000). Counties are *not* in the table, only
+  settlements, so "Staffordshire" places nothing: a county centroid can be
+  tens of kilometres from the event, which is the error the drive-time
+  ring is measuring in. A venue placed this way says so in the run log,
+  because it is less precise than one placed by postcode and that
+  difference has to be visible. **The normaliser exists twice** — in the
+  importer that writes the key and in `db.normalise_place` that reads it —
+  and a disagreement would not fail, it would silently never match, so
+  `test_places.py` asserts the two agree. One query per settlement type:
+  the endpoint 504s on `wdt:P31/wdt:P279*` and on the flat query for all
+  30,000 rows at once (measured 5 Sep 2026).
 - **Offline map**: `uk.pmtiles` (Protomaps GB extract) served by the Go
   server as plain range requests; MapLibre GL renders it client-side.
   Fonts/sprites served locally from `data/basemap/`. Attribution "© 
@@ -524,4 +550,5 @@ cd backend && go vet ./... && go test ./...        # backend
 cd frontend && npm run build                       # frontend
 cd scraper && python3 -m unittest discover tests   # scraper
 python3 setup/import_postcodes.py --self-test      # coordinate maths
+python3 setup/import_places.py --self-test         # gazetteer rules
 ```

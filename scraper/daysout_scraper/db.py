@@ -216,6 +216,17 @@ def ensure_venue(db, source, name, postcode, category="venue", url=""):
 
     coordinates = geocode(db, postcode) if postcode else None
     if not coordinates:
+        # No address, but the name may be a town we know. A listing that
+        # writes "Ludlow Food Festival, Shropshire" and never an address
+        # was contributing nothing at all before this; a town centroid is
+        # the right order of accuracy for rings measured in tens of
+        # kilometres. Said out loud, because a venue placed this way is
+        # less precise than one placed by postcode and the run log is
+        # where that difference has to be visible.
+        coordinates = geocode_place(db, name)
+        if coordinates:
+            log.info("placed %r by town, not postcode", name)
+    if not coordinates:
         return None
 
     db.execute(
@@ -271,4 +282,34 @@ def geocode(db, postcode):
     norm = postcode.upper().replace(" ", "")
     row = db.execute(
         "SELECT lat, lon FROM postcodes WHERE postcode = ?", (norm,)).fetchone()
+    return row if row else None
+
+
+def normalise_place(name):
+    """The key the places table is stored under.
+
+    Must agree with setup/import_places.py's normalise(), or every lookup
+    misses. The apostrophe is dropped rather than separated, so
+    "Bishop's Stortford" matches the "Bishops Stortford" a listing wrote.
+    """
+    text = (name or "").lower().replace("'", "").replace("’", "")
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", text).split())
+
+
+def geocode_place(db, name):
+    """Town name to (lat, lon) via the gazetteer, or None.
+
+    The coarse fallback for a listing that names a town and no address —
+    a town centroid rather than a doorstep, which is the right order of
+    accuracy for drive-time rings measured in tens of kilometres.
+
+    Only names identifying one settlement are in the table (the import
+    drops the twenty Middletons), so a hit here needs no tie-breaking and
+    a miss is either an unknown name or a deliberately refused one.
+    """
+    key = normalise_place(name)
+    if not key:
+        return None
+    row = db.execute(
+        "SELECT lat, lon FROM places WHERE name = ?", (key,)).fetchone()
     return row if row else None

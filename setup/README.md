@@ -2,7 +2,7 @@
 
 Everything the site serves comes from local files in the data directory
 (`$DAYSOUT_DATA`, default `$DAYSOUT/data`, or `./data` in development).
-These two scripts populate it; both need internet access **once** — after
+These three scripts populate it; all need internet access **once** — after
 that the site runs fully offline.
 
 ## 1. Postcodes (~25 MB download, ~60 MB in the database)
@@ -24,7 +24,34 @@ Verify the coordinate maths without downloading anything:
 python3 import_postcodes.py --self-test
 ```
 
-## 2. Map tiles (~2–3 GB for Great Britain)
+## 2. Place names (~2 MB of queries, ~22,000 rows)
+
+```bash
+python3 import_places.py --db /var/lib/daysout/daysout.db
+```
+
+Fills the `places` table so an event that names a town and no postcode can
+still be put on the map — a listing that writes "Ludlow Food Festival,
+Shropshire" and never an address. The data is Wikidata (CC0), the same
+source the scraper already uses for destinations, queried one settlement
+type at a time.
+
+A postcode remains the precise route and always wins; this is the coarse
+fallback, accurate to a town centroid, which is the right order for
+drive-time rings measured in tens of kilometres.
+
+**Only unambiguous names are stored.** There are twenty Middletons in the
+UK, and an event at the wrong one is worse than one the map never shows,
+so a name shared by two genuinely different places is dropped rather than
+guessed at (~1,900 of them).
+
+Check the rules without touching the network:
+
+```bash
+python3 import_places.py --self-test
+```
+
+## 3. Map tiles (~2–3 GB for Great Britain)
 
 ```bash
 ./get-tiles.sh --data-dir /var/lib/daysout
