@@ -51,18 +51,43 @@ daysout/
   fallback `ensure_venue` tries when a postcode is missing *or* unknown. A
   postcode still wins: it is a doorstep and a town is a centroid, which is
   the right order of accuracy for rings measured in tens of kilometres but
-  not for anything finer. **Only unambiguous names are imported** — there
-  are twenty Middletons, and an event at the wrong one is worse than one
-  the map never shows, the same reasoning that makes `dates.to_iso` refuse
-  a date rather than approximate it. Names within `SAME_PLACE_KM` of each
-  other are folded into one row, since duplicate Wikidata entries for a
-  single town are common; genuinely different places sharing a name are
-  dropped (~1,900 of ~24,000). Counties are *not* in the table, only
+  not for anything finer. **A shared name is refused unless one place dwarfs the rest** — there are
+  twenty Middletons of similar size, and an event at the wrong one is
+  worse than one the map never shows, the same reasoning that makes
+  `dates.to_iso` refuse a date rather than approximate it. Entries within
+  `SAME_PLACE_KM` are folded together as they are collected, since
+  duplicate Wikidata entries for a single town are common. Where genuinely
+  different places share a name, **population decides**: one of at least
+  `MIN_POPULATION` that is `DOMINANCE`× the next answers for the name, and
+  anything closer is dropped (~1,870 of ~24,000). Population rather than
+  Wikidata's settlement type, because the typing is not consistent enough
+  to lean on — Bath is filed a "city of the United Kingdom" and Brighton a
+  "market town", and a first version that ranked by type dropped Brighton
+  for exactly that reason. **The type list is only for coverage, and
+  leaving types out of it is not a neutral omission**: with no Brighton in
+  the table, the hamlet of Brighton in Cornwall was the only one of that
+  name, looked perfectly unambiguous, and took every Brighton event 230 km
+  west. An absent place does not merely fail to match; it lets a smaller
+  namesake answer for it. The population is fetched with `MAX` and
+  `GROUP BY`, not a bare `OPTIONAL`: a town with a figure per census comes
+  back once per figure, which pushed the village response past the size
+  the endpoint returns intact — it arrived truncated mid-JSON and the type
+  was lost silently. Counties are *not* in the table, only
   settlements, so "Staffordshire" places nothing: a county centroid can be
   tens of kilometres from the event, which is the error the drive-time
   ring is measuring in. A venue placed this way says so in the run log,
   because it is less precise than one placed by postcode and that
-  difference has to be visible. **The normaliser exists twice** — in the
+  difference has to be visible.
+  **The venue is then named after the town, not after the event.** A
+  touring festival runs under one name in a dozen places — Foodies
+  Festival plays Bath, Oxford, Edinburgh and Glasgow — and while the venue
+  carried the festival's name they were all the same venue: the first
+  created won and `find_destination_id_by_name` matched the rest to it, so
+  Bath's was reported at St Albans, 170 km and an hour wrong. A source
+  that knows only the town must claim only the town, which is why
+  `foodfestivals` sends an empty `location_name`; two festivals in one
+  town then correctly share its pin.
+  **The normaliser exists twice** — in the
   importer that writes the key and in `db.normalise_place` that reads it —
   and a disagreement would not fail, it would silently never match, so
   `test_places.py` asserts the two agree. One query per settlement type:

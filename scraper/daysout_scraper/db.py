@@ -196,46 +196,64 @@ def ensure_venue(db, source, name, postcode, category="venue", url="",
 
     Returns the destination source_id to link to, or None.
     """
-    if not name:
+    if not name and not places:
         return None
 
-    # Already known under this source: touch last_seen, or the stale purge
-    # at the end of the run deletes the venue we are about to attach an
-    # event to.
     ts = now()
+    if name:
+        # Already known under this source: touch last_seen, or the stale
+        # purge at the end of the run deletes the venue we are about to
+        # attach an event to.
+        row = db.execute(
+            "SELECT source_id FROM destinations WHERE source = ? AND source_id = ?",
+            (source, name)).fetchone()
+        if row:
+            # Also fill in a link for venues created before we recorded one.
+            db.execute(
+                "UPDATE destinations SET last_seen = ?,"
+                " url = CASE WHEN url = '' THEN ? ELSE url END"
+                " WHERE source = ? AND source_id = ?",
+                (ts, site_root(url), source, name))
+            return row[0]
+
+    coordinates = geocode(db, postcode) if postcode else None
+    if not coordinates:
+        # No address, but one of these may be a town we know. A listing
+        # that writes "Ludlow Food Festival, Shropshire" and never an
+        # address was contributing nothing at all before this; a town
+        # centroid is the right order of accuracy for rings measured in
+        # tens of kilometres.
+        #
+        # **The venue is then named after the town, not after the event.**
+        # A touring festival runs under one name in a dozen places —
+        # Foodies Festival plays Bath, Oxford, Edinburgh and Glasgow — and
+        # naming the venue for the festival made every one of them the
+        # same venue: the first created won, and the rest were linked to
+        # it, so Bath's was reported at St Albans. The town is what we
+        # actually know here, so it is what the pin is called, and two
+        # festivals in one town correctly share it.
+        for candidate in ((name,) if name else ()) + tuple(places):
+            coordinates = geocode_place(db, candidate)
+            if coordinates:
+                if candidate != name:
+                    log.info("placed %r at %r by town, not postcode",
+                             name or "(no venue named)", candidate)
+                    name = candidate
+                else:
+                    log.info("placed %r by town, not postcode", name)
+                break
+    if not coordinates or not name:
+        return None
+
+    # The town may already be a venue here, from another event in it.
     row = db.execute(
         "SELECT source_id FROM destinations WHERE source = ? AND source_id = ?",
         (source, name)).fetchone()
     if row:
-        # Also fill in a link for venues created before we recorded one.
         db.execute(
-            "UPDATE destinations SET last_seen = ?,"
-            " url = CASE WHEN url = '' THEN ? ELSE url END"
-            " WHERE source = ? AND source_id = ?",
-            (ts, site_root(url), source, name))
+            "UPDATE destinations SET last_seen = ? WHERE source = ? AND source_id = ?",
+            (ts, source, name))
         return row[0]
-
-    coordinates = geocode(db, postcode) if postcode else None
-    if not coordinates:
-        # No address, but the name may be a town we know. A listing that
-        # writes "Ludlow Food Festival, Shropshire" and never an address
-        # was contributing nothing at all before this; a town centroid is
-        # the right order of accuracy for rings measured in tens of
-        # kilometres. Said out loud, because a venue placed this way is
-        # less precise than one placed by postcode and the run log is
-        # where that difference has to be visible.
-        # The venue's own name first, then whatever towns the source
-        # offered. A listing headed "Foodies Festival, Bath, Somerset"
-        # cannot know which of its parts is the town, so it hands over
-        # the candidates in order and the first one the gazetteer holds
-        # wins — a county is simply never in there to be picked.
-        for candidate in (name, *places):
-            coordinates = geocode_place(db, candidate)
-            if coordinates:
-                log.info("placed %r by town %r, not postcode", name, candidate)
-                break
-    if not coordinates:
-        return None
 
     db.execute(
         """INSERT INTO destinations

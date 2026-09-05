@@ -159,6 +159,27 @@ class TestPlacingThem(unittest.TestCase):
         self.assertNotIn("Great British Food Festival, Arley Hall, Cheshire",
                          titles)
 
+    def test_a_touring_festival_does_not_collapse_into_one_venue(self):
+        # The bug a reader found: Foodies Festival plays Bath, Wakefield
+        # and half a dozen other towns under one name. While the venue was
+        # named after the festival, the first one created won and the rest
+        # were matched to it by name — so Bath's was reported at St Albans,
+        # 170 km away. The venue is the town now, so each stop is its own.
+        touring = f"""<html><body>
+          {entry("Foodies Festival, Bath, Somerset", "5 September 2026", "Chefs.")}
+          {entry("Foodies Festival, Wakefield", "12 September 2026", "More chefs.")}
+        </body></html>"""
+        ok, message = run_source(self.db, FakeFetcher(touring), FoodFestivals())
+        self.assertTrue(ok, message)
+
+        self.assertEqual(
+            self.db.execute(
+                "SELECT e.title, d.name, d.lat FROM events e"
+                " JOIN destinations d ON d.id = e.destination_id"
+                " ORDER BY e.start_date").fetchall(),
+            [("Foodies Festival, Bath, Somerset", "Bath", 51.380),
+             ("Foodies Festival, Wakefield", "Wakefield", 53.682)])
+
     def test_the_page_is_fetched_once_and_plainly(self):
         # A blog post, not a rendered listing: the dates are in the
         # served HTML and one request gets all of them.

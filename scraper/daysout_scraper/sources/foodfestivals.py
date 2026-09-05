@@ -139,9 +139,14 @@ def _event(title, text, heading):
         "url": link["href"] if link else URL,
         "start_date": start,
         "end_date": end,
-        # No postcode exists anywhere on this page. The venue label is
-        # the festival itself and the gazetteer places it by town.
-        "location_name": title.split(",")[0].strip()[:120],
+        # No postcode exists anywhere on this page, and no venue name
+        # either — so this claims neither. It used to hand over the
+        # festival's own name as the venue, which put every stop of a
+        # touring festival at the same place: "Foodies Festival" runs in
+        # Bath, Oxford, Edinburgh and Glasgow, the first one created the
+        # venue, and the rest were matched to it by name. The town is all
+        # this page tells us, so the town is what the venue becomes.
+        "location_name": "",
         "location_places": places,
     }
 

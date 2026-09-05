@@ -117,6 +117,59 @@ class TestPlacingAVenue(unittest.TestCase):
         self.assertEqual(self.coords("Ludlow"), (52.368, -2.717))
 
 
+class TestATouringFestivalIsNotOneVenue(unittest.TestCase):
+    """The bug this pair of rules exists to prevent.
+
+    "Foodies Festival" plays Bath, Oxford, Edinburgh and Glasgow. Naming
+    the venue after the festival made all four the same venue: the first
+    created won and the rest were matched to it by name, so the Bath one
+    was reported at St Albans, 170 km away and an hour wrong. The venue is
+    named after the town it resolved to, which is the thing actually
+    known.
+    """
+
+    def setUp(self):
+        self.db = sqlite3.connect(":memory:")
+        self.db.executescript(SCHEMA)
+        for name, lat, lon in [("bath", 51.381, -2.360),
+                               ("oxford", 51.752, -1.258),
+                               ("st albans", 51.755, -0.336)]:
+            self.db.execute("INSERT INTO places VALUES (?,?,?)", (name, lat, lon))
+        self.db.commit()
+
+    def place(self, *candidates):
+        return dbmod.ensure_venue(self.db, "food-festivals", "", "",
+                                  places=candidates)
+
+    def test_each_stop_gets_its_own_venue(self):
+        first = self.place("St Albans")
+        second = self.place("Somerset", "Bath")
+        third = self.place("Oxford")
+        self.assertEqual([first, second, third], ["St Albans", "Bath", "Oxford"])
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM destinations").fetchone()[0], 3)
+
+    def test_the_venue_is_named_after_the_town(self):
+        self.place("Somerset", "Bath")
+        self.assertEqual(
+            self.db.execute("SELECT name, lat, lon FROM destinations").fetchone(),
+            ("Bath", 51.381, -2.360))
+
+    def test_two_events_in_one_town_share_it(self):
+        self.assertEqual(self.place("Bath"), self.place("Bath"))
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM destinations").fetchone()[0], 1)
+
+    def test_a_county_is_never_the_answer(self):
+        # "Somerset" is offered first and is not a settlement, so it must
+        # fall through to the town rather than placing anything.
+        self.assertEqual(self.place("Somerset", "Bath"), "Bath")
+
+    def test_nothing_known_places_nothing(self):
+        self.assertIsNone(self.place("Somerset", "Nowhere At All"))
+        self.assertIsNone(self.place())
+
+
 class TestTheImporter(unittest.TestCase):
 
     def setUp(self):
@@ -124,15 +177,40 @@ class TestTheImporter(unittest.TestCase):
 
     def test_duplicate_entries_for_one_town_are_one_place(self):
         # Wikidata carries the same town twice often enough; two points a
-        # few hundred metres apart are one place recorded twice.
-        rows, dropped = self.importer.build({"ludlow": [(52.368, -2.717),
-                                                        (52.369, -2.718)]})
+        # few hundred metres apart are one place recorded twice, folded
+        # together as the rows are collected.
+        collected = self.importer.collect([
+            {"iLabel": {"value": "Ludlow"},
+             "coord": {"value": "Point(-2.717 52.368)"},
+             "population": {"value": "10500"}},
+            {"iLabel": {"value": "Ludlow"},
+             "coord": {"value": "Point(-2.718 52.369)"},
+             "population": {"value": "1801"}},
+        ], {})
+        rows, dropped = self.importer.build(collected)
         self.assertEqual(len(rows), 1)
         self.assertEqual(dropped, 0)
 
     def test_two_places_sharing_a_name_are_dropped(self):
-        rows, dropped = self.importer.build({"middleton": [(53.55, -2.19),
-                                                           (54.60, -1.50)]})
+        # (population, lat, lon). Two villages of similar size: nobody
+        # could say which was meant, so neither is stored.
+        rows, dropped = self.importer.build(
+            {"middleton": [(900, 53.55, -2.19), (850, 54.60, -1.50)]})
+        self.assertEqual(rows, [])
+        self.assertEqual(dropped, 1)
+
+    def test_a_city_answers_for_its_smaller_namesake(self):
+        # Brighton in Sussex against the hamlet in Cornwall. Without this
+        # the hamlet was the only Brighton in the table and took every
+        # Brighton event 230 km west.
+        rows, dropped = self.importer.build(
+            {"brighton": [(134293, 50.82, -0.14), (0, 50.35, -4.95)]})
+        self.assertEqual(rows, [("brighton", 50.82, -0.14)])
+        self.assertEqual(dropped, 0)
+
+    def test_a_place_too_small_to_be_the_one_meant_wins_nothing(self):
+        rows, dropped = self.importer.build(
+            {"nowhere": [(3000, 51.5, -0.1), (10, 53.5, -2.2)]})
         self.assertEqual(rows, [])
         self.assertEqual(dropped, 1)
 

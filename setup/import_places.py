@@ -16,10 +16,16 @@ this adds no new dependency and nothing to agree to. Stdlib only.
 **Only unambiguous names are stored.** There are twenty Middletons and
 seventeen Newtons in the UK, and a festival at the wrong one is worse than
 a festival the map never shows — the same reasoning that makes the scraper
-refuse a date it cannot read rather than approximate it. A name is kept
-only when every settlement carrying it sits within SAME_PLACE_KM of the
-others, which folds duplicate Wikidata entries for one town into a single
-row while still rejecting genuinely different places.
+refuse a date it cannot read rather than approximate it. Duplicate
+Wikidata entries for one town are folded together by SAME_PLACE_KM;
+genuinely different places of equal standing are dropped.
+
+**Where one of them dwarfs the rest, it wins.** Brighton is a city of
+134,293 on the south coast and a hamlet in Cornwall; a listing saying
+"Brighton" means the first, and dropping the name because a hamlet shares
+it loses the one everybody meant. Population decides that, not Wikidata's
+settlement type — the typing is not consistent enough to lean on, as Bath
+is filed a "city of the United Kingdom" and Brighton a "market town".
 
 One query per settlement type rather than one for all of them: the
 endpoint times out on `wdt:P31/wdt:P279*` over settlements, and returns a
@@ -42,20 +48,39 @@ ENDPOINT = "https://query.wikidata.org/sparql"
 # Wikidata asks for a User-Agent that identifies the client.
 USER_AGENT = "daysout-setup/1.0 (place-name gazetteer import)"
 
-# Q145 United Kingdom. The settlement types, queried one at a time:
-#   Q3957 town   Q532 village   Q515 city   Q5084 hamlet
+# Q145 United Kingdom. One query per type, because the endpoint will not
+# answer a single query for all of them.
+#
+# The four types after Q515 are not decoration, and leaving them out was a
+# real bug. Wikidata files Bath as a "city of the United Kingdom" and
+# Brighton as a "market town", so a list of city/town/village/hamlet
+# missed both — and missing them was worse than it sounds. With no
+# Brighton in the table the hamlet of Brighton in Cornwall was the only
+# one of that name, looked perfectly unambiguous, and took every Brighton
+# event 230 km west. **An absent place does not merely fail to match; it
+# lets a smaller namesake answer for it.**
 SETTLEMENT_TYPES = [
+    ("city", "Q515"),
+    ("city of the UK", "Q110390579"),
+    ("big city", "Q1549591"),
+    ("county town", "Q1357964"),
+    ("market town", "Q18511725"),
     ("town", "Q3957"),
     ("village", "Q532"),
-    ("city", "Q515"),
     ("hamlet", "Q5084"),
 ]
 
+# MAX and GROUP BY, not a bare OPTIONAL: a place with populations recorded
+# for several census years comes back once per figure, which doubled the
+# village response past the size the endpoint will return intact — it
+# arrived truncated mid-JSON and the whole type was lost.
 QUERY = """
-SELECT ?iLabel ?coord WHERE {
+SELECT ?iLabel ?coord (MAX(?pop) AS ?population) WHERE {
   ?i wdt:P31 wd:%s ; wdt:P17 wd:Q145 ; wdt:P625 ?coord .
+  OPTIONAL { ?i wdt:P1082 ?pop }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en" }
 }
+GROUP BY ?iLabel ?coord
 """
 
 # Wikidata writes coordinates longitude first.
@@ -68,6 +93,14 @@ QID_RE = re.compile(r"^Q\d+$")
 # rather than two places sharing a name. A large town is a couple of
 # kilometres across, so this is generous without spanning counties.
 SAME_PLACE_KM = 10.0
+
+# What it takes for one place to answer for a shared name: it must be a
+# real town in its own right, and it must dwarf the others. Brighton is
+# 134,293 people against a Cornish hamlet too small to have a figure at
+# all, which is not a close call; two villages of nine hundred each are,
+# and stay ambiguous.
+MIN_POPULATION = 20_000
+DOMINANCE = 10
 
 TIMEOUT_SECONDS = 300
 
@@ -104,7 +137,12 @@ def fetch(query):
 
 
 def collect(bindings, into):
-    """Add (name -> list of points) from one query's rows."""
+    """Add (name -> list of (population, lat, lon)) from one query's rows.
+
+    A place with several recorded populations arrives as several rows at
+    the same point; the largest is kept, so a figure from 1801 does not
+    stand in for the current one.
+    """
     for row in bindings:
         label = row.get("iLabel", {}).get("value", "")
         if not label or QID_RE.match(label):
@@ -113,32 +151,61 @@ def collect(bindings, into):
         if not match:
             continue
         lon, lat = float(match.group(1)), float(match.group(2))
+        try:
+            population = int(float(row.get("population", {}).get("value", 0)))
+        except (TypeError, ValueError):
+            population = 0
         key = normalise(label)
-        if key:
-            into.setdefault(key, []).append((lat, lon))
+        if not key:
+            continue
+
+        for index, (known, plat, plon) in enumerate(into.setdefault(key, [])):
+            if haversine_km(lat, lon, plat, plon) <= SAME_PLACE_KM:
+                if population > known:
+                    into[key][index] = (population, plat, plon)
+                break
+        else:
+            into[key].append((population, lat, lon))
     return into
 
 
-def unambiguous(points):
+def unambiguous(places):
     """One (lat, lon) for a name, or None when the name names two places.
 
-    Duplicate Wikidata entries for the same town are common and harmless,
-    so closeness decides this rather than the number of rows.
+    `collect` has already folded duplicate entries for a single place
+    together, so anything left here is genuinely more than one place.
+
+    **The one people mean wins, when it is not a close call.** Brighton is
+    a city of 134,293 on the south coast and a hamlet in Cornwall; a
+    listing that says "Brighton" means the first, and refusing to place it
+    because a hamlet shares the name loses the one everybody meant. The
+    test is population rather than Wikidata's settlement type, because the
+    typing is not consistent enough to lean on — Bath is filed as a "city
+    of the United Kingdom" and Brighton as a "market town".
+
+    **Anything closer stays ambiguous.** Two villages of nine hundred
+    apiece, or a town only twice the size of its namesake, are dropped:
+    an event at the wrong one is worse than an event the map never shows,
+    which is the same reasoning that makes `dates.to_iso` refuse a date
+    rather than approximate it.
     """
-    if not points:
+    if not places:
         return None
-    first = points[0]
-    for point in points[1:]:
-        if haversine_km(first[0], first[1], point[0], point[1]) > SAME_PLACE_KM:
-            return None
-    return first
+    if len(places) == 1:
+        return places[0][1], places[0][2]
+
+    biggest = max(places, key=lambda place: place[0])
+    rest = max(place[0] for place in places if place is not biggest)
+    if biggest[0] >= MIN_POPULATION and biggest[0] >= DOMINANCE * max(rest, 1):
+        return biggest[1], biggest[2]
+    return None
 
 
 def build(places):
     """(rows, dropped) — the table to write, and how many names were ambiguous."""
     rows, dropped = [], 0
-    for name, points in places.items():
-        point = unambiguous(points)
+    for name, found in places.items():
+        point = unambiguous(found)
         if point is None:
             dropped += 1
             continue
@@ -174,22 +241,38 @@ def self_test():
     assert 250 < haversine_km(51.507, -0.128, 53.480, -2.242) < 270
     assert haversine_km(51.500, -0.100, 51.505, -0.100) < 1.0
 
-    assert unambiguous([(51.5, -0.1)]) == (51.5, -0.1)
-    assert unambiguous([(51.500, -0.100), (51.505, -0.100)]) == (51.5, -0.1)
-    assert unambiguous([(51.5, -0.1), (53.5, -2.2)]) is None
+    # (population, lat, lon).
+    assert unambiguous([(1000, 51.5, -0.1)]) == (51.5, -0.1)
 
+    # Brighton, 134,293, against a Cornish hamlet with no figure at all.
+    assert unambiguous([(134293, 50.82, -0.14), (0, 50.35, -4.95)]) == (50.82, -0.14)
+
+    # Two villages of nine hundred: nobody could say which, so neither.
+    assert unambiguous([(900, 51.5, -0.1), (850, 53.5, -2.2)]) is None
+    # Big, but not big enough to speak for the other: 30k against 9k.
+    assert unambiguous([(30000, 51.5, -0.1), (9000, 53.5, -2.2)]) is None
+    # Dominant but too small to be the one anybody means.
+    assert unambiguous([(3000, 51.5, -0.1), (10, 53.5, -2.2)]) is None
+
+    # A place recorded twice, once with a stale population: one place,
+    # and the larger figure is the one kept.
     collected = collect([
-        {"iLabel": {"value": "Ludlow"}, "coord": {"value": "Point(-2.7166 52.3681)"}},
+        {"iLabel": {"value": "Ludlow"}, "coord": {"value": "Point(-2.7166 52.3681)"},
+         "population": {"value": "10500"}},
+        {"iLabel": {"value": "Ludlow"}, "coord": {"value": "Point(-2.7168 52.3683)"},
+         "population": {"value": "1801"}},
         {"iLabel": {"value": "Q12345"}, "coord": {"value": "Point(-1.0 52.0)"}},
         {"iLabel": {"value": "No Coords"}, "coord": {"value": "elsewhere"}},
     ], {})
     assert list(collected) == ["ludlow"], collected
+    assert collected["ludlow"] == [(10500, 52.3681, -2.7166)], collected
 
     rows, dropped = build({
-        "ludlow": [(52.368, -2.717)],
-        "middleton": [(53.55, -2.19), (54.6, -1.5)],
+        "ludlow": [(10500, 52.368, -2.717)],
+        "middleton": [(900, 53.55, -2.19), (850, 54.6, -1.5)],
+        "brighton": [(134293, 50.82, -0.14), (0, 50.35, -4.95)],
     })
-    assert rows == [("ludlow", 52.368, -2.717)], rows
+    assert rows == [("brighton", 50.82, -0.14), ("ludlow", 52.368, -2.717)], rows
     assert dropped == 1
 
     print("self-test passed")
