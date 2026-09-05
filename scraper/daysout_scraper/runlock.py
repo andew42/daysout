@@ -8,8 +8,8 @@ lets the second writer wait, but only for db.connect's 30 seconds, and
 then the run dies on "database is locked" partway through.
 
 Measured on the house server: the daily timer fires at 05:30, a deploy
-landed at 05:42 while it was still going, and the deploy's scrape died in
-seed_sources.ensure before reading a single source. The Scrape step is
+landed at 05:42 while it was still going, and the deploy's scrape died on
+its first write before reading a single source. The Scrape step is
 continue-on-error, so the deploy went green with a crashed scrape inside
 it and the database kept the previous day's rows.
 

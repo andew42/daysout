@@ -30,8 +30,7 @@ import unittest
 from daysout_scraper import db as dbmod
 from daysout_scraper import ical
 from daysout_scraper.pipeline import run_source
-from daysout_scraper.sources import seed_sources
-from daysout_scraper.sources.feeds import FeedSource
+from daysout_scraper.sources.iacf import IACF
 
 from schema import SCHEMA
 
@@ -90,16 +89,14 @@ class FakeFetcher:
         return self.text
 
 
-def source(venue_name="", venue_postcode=""):
-    """The combined feed: one row spanning every IACF showground.
+def source():
+    """One source spanning every IACF showground.
 
-    No venue_name/venue_postcode by default, unlike the per-venue rows it
-    replaced — a source covering seven showgrounds has no single address
-    to fall back on, so each event must carry its own.
+    It carries no fallback venue, unlike the per-venue rows it replaced —
+    seven showgrounds have no single address between them, so each event
+    must bring its own postcode in LOCATION.
     """
-    # (id, name, url, kind, category, venue_name, venue_postcode)
-    return FeedSource((1, "iacf", FEED_URL, "ical", "antiques",
-                       venue_name, venue_postcode))
+    return IACF()
 
 
 class TestJoiningTheDaysOfOneFair(unittest.TestCase):
@@ -172,11 +169,17 @@ class TestTheFormatsOwnTraps(unittest.TestCase):
 
     def test_the_postcode_comes_from_the_feed_when_it_has_one(self):
         december = [e for e in self.events() if "December" in e["title"]][0]
-        self.assertEqual(december["venue_postcode"], "NG24 2NY")
+        self.assertEqual(december["location_postcode"], "NG24 2NY")
 
-    def test_the_venue_name_is_the_first_part_of_the_address(self):
+    def test_the_whole_address_line_is_handed_over(self):
+        # A source written in code passes LOCATION as it stands and lets
+        # pipeline._venue decide what the venue is called — it is the one
+        # place that makes that decision, and it takes the first
+        # comma-separated part. TestTheEventsReachTheDatabase pins the
+        # result: a destination called "Newark Showground".
         december = [e for e in self.events() if "December" in e["title"]][0]
-        self.assertEqual(december["location_name"], "Newark Showground")
+        self.assertEqual(december["location_name"],
+                         "Newark Showground, Newark, Nottinghamshire, NG24 2NY")
 
     def test_an_event_whose_location_omits_the_postcode_has_none(self):
         # The cost of one row for seven showgrounds: there is no single
@@ -185,15 +188,7 @@ class TestTheFormatsOwnTraps(unittest.TestCase):
         # names it, so it reads as the site's omission and not a parser
         # that missed something.
         winter = [e for e in self.events() if "Winter" in e["title"]][0]
-        self.assertEqual(winter["venue_postcode"], "")
-
-    def test_a_row_venue_would_still_be_used_if_one_were_set(self):
-        # The mechanism is intact for a genuinely single-venue feed; it
-        # is simply wrong to use here, so the seeded row leaves it blank.
-        events = [e for _, e in
-                  source(venue_postcode="NG24 2NY").scrape(FakeFetcher())]
-        winter = [e for e in events if "Winter" in e["title"]][0]
-        self.assertEqual(winter["venue_postcode"], "NG24 2NY")
+        self.assertEqual(winter["location_postcode"], "")
 
     def test_the_feed_is_fetched_once_and_not_rendered(self):
         fetcher = FakeFetcher()
@@ -203,7 +198,7 @@ class TestTheFormatsOwnTraps(unittest.TestCase):
     def test_a_valid_but_empty_feed_is_not_an_error(self):
         # IACF's Shepton Mallet feed is 264 valid bytes listing no fairs.
         empty = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n"
-        with self.assertLogs("daysout_scraper.sources.feeds", "INFO") as logged:
+        with self.assertLogs("daysout_scraper.sources.iacf", "INFO") as logged:
             events = list(source().scrape(FakeFetcher(empty)))
         self.assertEqual(events, [])
         self.assertIn("lists no events", "\n".join(logged.output))
@@ -231,99 +226,3 @@ class TestTheEventsReachTheDatabase(unittest.TestCase):
             db.execute("SELECT name, postcode, category FROM destinations")
               .fetchall(),
             [("Newark Showground", "NG24 2NY", "antiques")])
-
-
-class TestTheSeededRow(unittest.TestCase):
-
-    def db(self):
-        db = sqlite3.connect(":memory:")
-        db.executescript(SCHEMA)
-        seed_sources.ensure(db)
-        return db
-
-    def test_one_row_covers_every_venue(self):
-        rows = self.db().execute(
-            "SELECT name, url, kind, category FROM sources"
-            " WHERE name LIKE 'iacf%' ORDER BY name").fetchall()
-        self.assertEqual(rows, [("iacf", FEED_URL, "ical", "antiques")])
-
-    def test_it_carries_no_fallback_venue(self):
-        # Seven showgrounds; a single address would put fairs in the
-        # wrong county rather than dropping the ones it cannot place.
-        row = self.db().execute(
-            "SELECT venue_name, venue_postcode FROM sources"
-            " WHERE name = 'iacf'").fetchone()
-        self.assertEqual(row, ("", ""))
-
-    def test_the_link_shown_is_the_calendar_not_the_feed(self):
-        site, url = self.db().execute(
-            "SELECT site_url, url FROM sources WHERE name = 'iacf'").fetchone()
-        self.assertEqual(site, "https://www.iacf.co.uk/antiques-fair-calendar/")
-        self.assertIn("?feed=", url)
-
-
-class TestReplacingThePerVenueRows(unittest.TestCase):
-    """The house server holds the three old rows, their venues and their
-    events. Retiring the rows alone would leave the events behind for
-    ever — nothing refreshes them once the row is gone — so the same
-    fairs would sit in the events list twice, once from each source."""
-
-    def db(self):
-        db = sqlite3.connect(":memory:")
-        db.executescript(SCHEMA)
-        for name, venue, postcode in (
-                ("iacf-newark", "Newark Showground", "NG24 2NY"),
-                ("iacf-ardingly", "South of England Showground", "RH17 6TL"),
-                ("iacf-shepton-mallet", "Royal Bath and West Showground",
-                 "BA4 6QN")):
-            db.execute(
-                "INSERT INTO sources (name, url, kind, category, enabled,"
-                " notes, added, venue_name, venue_postcode)"
-                " VALUES (?, ?, 'ical', 'antiques', 1, '', '2026-01-01', ?, ?)",
-                (name, f"https://www.iacf.co.uk/?feed={name}-events-ical",
-                 venue, postcode))
-            dbmod.upsert_destination(db, name, {
-                "source_id": venue, "name": venue, "category": "antiques",
-                "postcode": postcode, "lat": 53.0, "lon": -0.7})
-            destination = db.execute(
-                "SELECT id FROM destinations WHERE source = ?",
-                (name,)).fetchone()[0]
-            db.execute(
-                "INSERT INTO events (destination_id, source, source_id, title,"
-                " start_date, end_date, last_seen)"
-                " VALUES (?, ?, 'e1', ?, '2026-10-15', '2026-10-16', 't')",
-                (destination, name, f"{name} fair"))
-        db.commit()
-        return db
-
-    def test_the_old_rows_and_their_events_go(self):
-        db = self.db()
-        seed_sources.ensure(db)
-        self.assertEqual(
-            db.execute("SELECT COUNT(*) FROM events"
-                       " WHERE source LIKE 'iacf-%'").fetchone()[0], 0)
-        self.assertEqual(
-            db.execute("SELECT COUNT(*) FROM destinations"
-                       " WHERE source LIKE 'iacf-%'").fetchone()[0], 0)
-
-    def test_only_the_combined_row_is_left(self):
-        db = self.db()
-        seed_sources.ensure(db)
-        self.assertEqual(
-            [r[0] for r in db.execute("SELECT name FROM sources"
-                                      " WHERE name LIKE 'iacf%'")],
-            ["iacf"])
-
-    def test_the_old_names_never_come_back(self):
-        # ensure() runs every scrape and only ever inserts, so without
-        # the removed_sources record a retired name would return.
-        db = self.db()
-        seed_sources.ensure(db)
-        seed_sources.ensure(db)
-        removed = {r[0] for r in db.execute("SELECT name FROM removed_sources")}
-        self.assertTrue({"iacf-newark", "iacf-ardingly",
-                         "iacf-shepton-mallet"} <= removed)
-
-
-if __name__ == "__main__":
-    unittest.main()

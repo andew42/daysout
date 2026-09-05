@@ -215,62 +215,6 @@ jobs:
           curl -s -o /dev/null -w "  sprite light.json:        %{http_code}\n" \
             http://localhost:8080/basemap/sprites/light.json
 
-      - name: Discover what candidate sources publish
-        # The development sandbox cannot reach these sites, so the probe
-        # runs here and its findings decide which extractor each source
-        # gets. Results are recorded in sources.last_status.
-        continue-on-error: true
-        run: |
-          cd /opt/daysout/scraper
-          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -m daysout_scraper.discover || true
-
-      - name: Diagnose National Trust
-        # Two separate questions, and only the box can answer them.
-        # 1. Does robots.txt allow a property's events page? (It is the
-        #    fetcher that decides, so ask the fetcher, not a human reading
-        #    the file.)
-        # 2. Does the site serve that page, or a bot-protection challenge?
-        #    A challenge is a refusal and the source stops on it; this
-        #    prints which of the two we are actually getting.
-        continue-on-error: true
-        run: |
-          cd /opt/daysout/scraper
-          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -c "
-          import sys
-          sys.path.insert(0, '/opt/daysout/scraper')
-          from daysout_scraper.fetch import Fetcher, USER_AGENT
-          from daysout_scraper import jsonld
-          from daysout_scraper.sources.national_trust import looks_like_a_challenge
-
-          URL = ('https://www.nationaltrust.org.uk/visit/'
-                 'oxfordshire-buckinghamshire-berkshire/stowe-gardens/events')
-          fetcher = Fetcher('/var/lib/daysout/scrape-cache')
-          print('robots.txt allows it:', fetcher._allowed(URL))
-          try:
-              body = fetcher.get(URL)
-          except Exception as e:
-              print('fetch failed:', e)
-              raise SystemExit(0)
-          print('bytes:', len(body))
-          print('bot-protection challenge:', looks_like_a_challenge(body))
-          objects = jsonld.extract_objects(body)
-          print('JSON-LD objects:', len(objects),
-                sorted({str(o.get('@type')) for o in objects}))
-          events = [jsonld.parse_event(o, URL) for o in objects]
-          events = [e for e in events if e]
-          print('Events found:', len(events))
-          for event in events[:5]:
-              print('   ', event['start_date'], event['title'],
-                    '@', event['location_name'] or '(unnamed)',
-                    event['location_postcode'])
-          print()
-          print('--- robots.txt lines mentioning /visit or Disallow:')
-          robots = fetcher.session.get('https://www.nationaltrust.org.uk/robots.txt',
-                                       timeout=30).text
-          for line in robots.splitlines():
-              if 'visit' in line.lower() or line.lower().startswith(('user-agent', 'disallow')):
-                  print('   ', line.strip())" || true
-
       - name: Hunt for event APIs on the candidate sites
         # A documented WordPress events API is the best outcome available:
         # dated, located JSON, no rendering and no guessing at markup. A
@@ -336,7 +280,7 @@ jobs:
           import sys; sys.path.insert(0, '.')
           from daysout_scraper.fetch import Fetcher
           from daysout_scraper import browser
-          from daysout_scraper.sources.national_trust import looks_like_a_challenge
+          from daysout_scraper.fetch import looks_like_a_challenge
           from daysout_scraper.sources.ukcraftfairs import CALENDAR, parse_listing
 
           if not browser.available():
@@ -469,19 +413,6 @@ jobs:
           for event in sorted(events, key=lambda e: e['start_date'])[:14]:
               print('   ', event['start_date'], '..', event['end_date'],
                     '|', event['title'][:60])" || true
-
-      - name: Hunt for a sanctioned route into National Trust events
-        # The pages are closed to us and we do not work around that, so
-        # look for a route the site offers instead: a calendar feed, an
-        # RSS file, or a sitemap detailed enough to be useful on its own.
-        # A sitemap is published precisely so automated clients can
-        # discover what a site holds, so reading one circumvents nothing —
-        # the question is whether the URLs carry event dates.
-        continue-on-error: true
-        run: |
-          cd /opt/daysout/scraper
-          sudo env DAYSOUT_DATA=/var/lib/daysout python3 -m daysout_scraper.feedhunt \
-            --url https://www.nationaltrust.org.uk/ || true
 
       - name: Diagnose a rendered listing page
         # What does a client-side listing actually contain once rendered?

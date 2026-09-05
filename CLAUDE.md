@@ -26,7 +26,7 @@ daysout/
 │   ├── daysout_scraper/sources/  wikidata, english_heritage,
 │   │                             historic_houses, shuttleworth,
 │   │                             ukcraftfairs, lamporthall, waddesdon,
-│   │                             foodfestivals, ngs
+│   │                             foodfestivals, ngs, iacf, rhs
 │   └── tests/         fixture-based; python3 -m unittest discover tests
 ├── setup/             One-off data population (postcodes, places, map tiles)
 ├── packaging/         systemd units + timer + install.sh
@@ -101,11 +101,11 @@ daysout/
   survive the removal deliberately. `fetch.looks_like_a_challenge` moved
   out of that module into `fetch.py`, where it belongs anyway: it
   describes what a *server* returned, `feedhunt` uses it on any site, and
-  several sources cite it to say "nobody is turning us away". And
-  `refusedHosts` in `backend/store/sources.go` still names
-  nationaltrust.org.uk — the guard is about the site's refusal, not about
-  our source existing, and without it the Sources tab would accept the
-  host and `kind='browser'` would point a renderer at an access control.
+  several sources cite it to say "nobody is turning us away". There was
+  also a `refusedHosts` guard keeping nationaltrust.org.uk out of the
+  Sources tab's Add form; it was kept when this source went and then
+  became unreachable when the form itself did, since a page that cannot
+  add a source cannot be pointed at a refusing one. It went with the form.
   We never work around a challenge: no disguised User-Agent, no solving
   it, no rotating identities. The point of detecting one is to stop and
   say so rather than collect hundreds of refusals and report an empty
@@ -115,7 +115,8 @@ daysout/
   part of a source knows nothing about the rest.
 - **Diagnosing a source**: `python3 -m daysout_scraper.inspect --source X
   --kind place|event` prints what the parser actually sees on real pages
-  (code sources only). For any URL, including a `sources`-table row,
+  (code sources only). For any URL at all — which is where reading a new
+  site starts —
   `python3 -m daysout_scraper.discover --url U [--browser]` reports the
   formats it publishes and then `domscan.py`'s DOM evidence: byte count,
   `<time>` and date-classed elements, date-looking text, event-looking
@@ -138,10 +139,11 @@ daysout/
 - **Rendering is not for getting past a refusal.** A site that answers with
   a bot-protection challenge is saying no, and a browser that defeats the
   challenge would be evading an access control rather than reading a page.
-  National Trust must never be given kind='browser'; `refusedHosts` in
-  `backend/store/sources.go` keeps it out of the Sources tab, and stays
-  there now the code source that used to read it has gone — the guard is
-  about what the site does, not about which of our code exists.
+  This is a rule about how sources are written, not a setting to get
+  wrong: nothing can be pointed at a site from the UI any more, so the
+  only way a renderer meets a challenge is somebody writing a source that
+  does it on purpose. `looks_like_a_challenge` is there to notice and
+  stop.
 - **Dates are ISO or they are nothing** (`scraper/daysout_scraper/dates.py`).
   They are stored as text and every query compares them as text, so a date
   in another shape does not look odd — it fails `end_date >= today` and the
@@ -162,12 +164,8 @@ daysout/
   one entry per house and carries no events, so it contributes places only,
   and a house page publishes an address rather than coordinates — hence
   `pipeline` geocoding a place from its postcode, and dropping one it
-  cannot geocode rather than storing it at 0,0. A code source and a
-  `sources` row must never share a name (both lists run in one pass and
-  the loser overwrites the winner's result): `SUPERSEDED` in
-  `seed_sources.py` deletes the row, deliberately *not* via `RETIRED`,
-  whose `removed_sources` entry would also hide the code source from the
-  Sources tab.
+  cannot geocode rather than storing it at 0,0. It began as a seeded row
+  and was the first candidate to earn a parser of its own.
 - **Shuttleworth** (`sources/shuttleworth.py`) is one venue whose event
   pages carry nothing machine-readable — no Event JSON-LD, no `<time>`, no
   date-classed elements, no date in the URL. The date is read from the
@@ -303,50 +301,40 @@ daysout/
   are called The Old Vicarage, and name-matching would put one's open day
   two hundred miles away. Measured 5 Sep 2026: 624 gardens listed, **214
   with a future open day, 461 openings, 461/461 linked**, every one with a
-  postcode and inside the UK. The old `ngs-find-a-garden` row is RETIRED
-  (no code source takes that name and its rows must go, or the same
-  gardens appear twice); `ngs-open-gardens` is SUPERSEDED, since the code
-  source takes that name.
-- **A code source and a `sources` row must never share a name**: both lists
-  run in one pass and the loser overwrites the winner's result.
-  `CodeSources` in `backend/store/sources.go` names the code sources so a
-  name with no row is listed only if one claims it — otherwise it is
-  leftover `scrape_runs` history posing as an unremovable built-in. A test
-  reads the scraper's registry to keep the two lists in step.
-- **Sources live in the database**, not only in code: the `sources` table
-  holds (name, url, kind, category, enabled). `sources/feeds.py` turns a
-  row into a runnable source, so adding a listing site is an INSERT — which
-  is what lets the **Sources tab** (`frontend/src/SourcesView.jsx`,
-  `/api/sources`, `backend/store/sources.go`) add one from the browser.
-  The listing shows **what each source is contributing** — events and
-  places, ordered by events, so what works is at the top — plus the
-  scraper's own message from its last run. The pill is a button: it opens
-  the rows themselves (`GET /api/sources/contribution`), because a count
-  says a source is working and only the rows say whether what it produced
-  is any good — a source can report five events and have read five
-  meaningless ones. Capped at 200 rows a side, with the true totals shown. A verdict like "publishes:
-  sitemap" and a count of zero mean the same thing in the end, and only
-  one of them says so. It also lists the sources written in code
-  (`builtIn`), found by taking the union of the table with whatever has
-  run or produced rows: the sources written in code are not in the table
-  and are the ones that work, so a page listing only the table was a list
-  of failures. Built-in rows offer Update and nothing else — there is no
-  row to remove.
-- **Remove is the only way to stop a source**, behind a confirmation
-  dialog because it is not undoable. Three things have to happen together
-  or it does not stick: the row goes, the name is recorded in
-  `removed_sources` (`seed_sources.ensure()` re-inserts any candidate
-  missing from the table, so an unrecorded removal undoes itself), and the
-  listing excludes removed names — a source keeps its `scrape_runs`
-  history, which brought it back through the union looking `builtIn` and
-  therefore unremovable. Its events go too: nothing refreshes them once
-  the source is gone. Its venues go only if no other source's events sit
-  there, since destinations cascade to their events. Enable/disable was
-  dropped from the UI; the `enabled` column stays, since the scraper uses it.
-- **`seed_sources.RETIRED` drops a candidate for good**, deleting the row
-  and its rows from any database that still holds it. Removing a name from
-  `CANDIDATES` alone does nothing to an existing database, because
-  `ensure()` only ever inserts.
+  postcode and inside the UK. Both seeded NGS rows are gone with the table
+  that held them.
+- **Every source is written in code, and that is the second answer to this
+  question.** Sources used to live in a `sources` table — (name, url, kind,
+  category, enabled) — which `sources/feeds.py` turned into a runnable
+  source by picking an extractor from the kind (`auto`, `wpevents`,
+  `ical`, `jsonld`, `sitemap`, `browser`). Adding a listing site was an
+  INSERT, and the Sources tab could do it from the browser. The idea was
+  sound and the results were not: **these sites differ so much that
+  reading one takes a parser written against it**, after somebody has
+  looked at what it actually publishes, and rows added without that
+  investigation reported an empty site for ever. Of the seeded candidates
+  only two ever produced anything, and both are now code sources
+  (`sources/iacf.py`, `sources/rhs.py`); the other five never did. So the
+  table is gone, `feeds.py` and `seed_sources.py` with it, along with
+  `slugdate.py`, which nothing but the generic engine used. `migrate.go`
+  drops `sources` and `removed_sources` from databases that still hold
+  them, rather than leaving a schema that describes a feature nothing
+  implements.
+  The **Sources tab** (`frontend/src/SourcesView.jsx`, `GET /api/sources`,
+  `backend/store/sources.go`) is now a report: it lists what the scraper
+  has code for, with **what each source is contributing** — events and
+  places, ordered by what they produced, so what works is at the top —
+  plus the scraper's own message from its last run. The pill is still a
+  button and still opens the rows themselves
+  (`GET /api/sources/contribution`), because a count says a source is
+  working and only the rows say whether what it produced is any good: a
+  source can report five events and have read five meaningless ones.
+  Capped at 200 rows a side, with the true totals shown. **Update** is the
+  only thing the page can now ask for.
+  `store.CodeSources` is the list the page renders, and a test keeps it in
+  step with the scraper's `IMPLEMENTED`: a name missing from it is a
+  source that has quietly stopped being listed, and nobody would notice
+  until they wondered where its events came from.
 - **A source may carry its own venue** (`venue_name`, `venue_postcode`).
   An attraction's own website rarely repeats its address on every event
   page, so without it those events have nowhere to go and are dropped —
@@ -407,22 +395,15 @@ daysout/
   <name>`, then reporting the scrape_runs verdict and the scraper's own
   log. A full crawl, because the point of pressing Update is to have this
   source's events be right, which means letting the pipeline purge what
-  has gone; ten-minute timeout. Guards: the name
-  must match `safeSourceName` *and* exist in the table (a name starting
-  with `-` would be read as a flag), one test at a time behind a mutex so
-  a double-click can't send two crawls at one site. `scraperLogLines` strips Python tracebacks — forty frames buried
-  the one line worth reading — leaving the LEVEL-prefixed log. Rows added there are marked in `notes` with
-  `store.UIAddedNote`, because only those are safe to delete — the scraper
-  re-inserts any seeded candidate missing from the table, so seeded rows
-  can only be disabled. `refusedHosts` in `sources.go` keeps National
-  Trust out of the form entirely rather than leaving a trap behind the Add
-  button.
-  `kind` is wpevents | ical | jsonld | sitemap | browser | auto; auto
-  probes the URL via `discover.py` and picks, trying `wpevents` first
-  because a documented API beats every kind of scraping.
-- **An iCal feed needs no parser of ours.** `ical.py` reads RFC 5545 and
-  `kind='ical'` runs it, so a site publishing .ics is an INSERT — IACF is
-  the case in point, as one row (`iacf`) reading the combined feed its own
+  has gone; ten-minute timeout. Guards: the name must match
+  `safeSourceName` *and* be one the scraper actually has (a name starting
+  with `-` would be read as a flag), one update at a time behind a mutex
+  so a double-click cannot send two crawls at one site. `scraperLogLines`
+  strips Python tracebacks — forty frames buried the one line worth
+  reading — leaving the LEVEL-prefixed log.
+- **An iCal feed needs no parser of ours.** `ical.py` reads RFC 5545, so a
+  site publishing .ics needs only a source that fetches it — IACF is the
+  case in point (`sources/iacf.py`), reading the combined feed its own
   calendar page links as "Add all iacf fairs to my calendar". Three things about the
   format bite. An all-day `DTEND` is **exclusive**, so a fair running the
   2nd to the 3rd is published as ending on the 4th. Long lines are folded
@@ -431,24 +412,27 @@ daysout/
   one is wrong, not the reader. And a WordPress export writes its post
   text straight into `SUMMARY`/`DESCRIPTION` with HTML entities still in
   it, so `_unescape` decodes those as well as RFC 5545's own escaping.
-  Their URLs are query strings (`?feed=...`), so the kind is set
-  explicitly: `auto` would probe it as a web page. Shepton Mallet's own
-  feed answered with a valid calendar listing **no** fairs — a real
-  answer, so `_from_ical` says so rather than leaving the pipeline's
-  "unreachable, blocked, or its patterns are wrong" as the only word.
-- **One IACF row, not one per venue.** Measured 1 Sep 2026: the site has
+  The feed's URL is a query string (`?feed=...`), right to fetch and no use
+  to click, so `IACF.site_url` points a reader at the calendar page
+  instead. Shepton Mallet's own feed once answered with a valid calendar
+  listing **no** fairs — a real answer, so the source says so rather than
+  leaving the pipeline's "unreachable, blocked, or its patterns are wrong"
+  as the only word.
+- **One IACF source, not one per venue.** Measured 1 Sep 2026: the site has
   no events API (every `wp-json` event route 404s), its calendar page
   carries no Event JSON-LD and its sitemap no event URLs — but that page
   links `?feed=iacf-all-events-ical`, offered for exactly this. IACF runs
   more than the three venues first seeded: Newark, Ardingly, Shepton
   Mallet, Builth Wells, Norfolk, Runway and Newbury. The per-venue rows
-  are `RETIRED`, not `SUPERSEDED` — no code source takes those names, and
-  their events must go with them, since nothing refreshes an event whose
-  row is gone and the same fairs would sit in the list twice.
-  A row spanning seven showgrounds **cannot carry a fallback venue**: a
-  single `venue_postcode` would put a Welsh fair at a Nottinghamshire
-  postcode, so `venue_name`/`venue_postcode` are left blank and an event
-  whose LOCATION omits the postcode is dropped and named in the log.
+  it replaced are gone with the table that held them, and their events
+  with them: nothing refreshes an event whose source no longer exists,
+  and the same fairs would otherwise sit in the list twice.
+  A source spanning seven showgrounds **cannot carry a fallback venue**: a
+  single postcode would put a Welsh fair at a Nottinghamshire one, so
+  every event must bring its own address in LOCATION. One that does not is
+  still yielded and named in the log rather than dropped in the source —
+  the pipeline can place it at a venue another fair in the same feed
+  created, which is how the Newark winter market lands.
 - **A multi-day fair may be published as one event per day.** IACF's
   feeds carry "…Fair: 10-11 December" twice, dated the 10th and the 11th,
   and stored as they arrive that shows every fair twice on the events
@@ -575,7 +559,7 @@ daysout/
   minutes, and a second scraper dies on "database is locked" after
   `db.connect`'s 30 seconds. The timer fires at 05:30 and a deploy landed
   at 05:42 while it was still going: the deploy's scrape died in
-  `seed_sources.ensure` before reading a single source, and because the
+  its first write before reading a single source, and because the
   Scrape step is `continue-on-error` the deploy went green with the
   previous day's rows still in the database. `runlock.acquire` now takes
   an exclusive lock and waits, which is what the Update button needs —

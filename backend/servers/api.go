@@ -167,64 +167,30 @@ func TilesHandler(dataDir string) http.HandlerFunc {
 	}
 }
 
-// SourcesHandler /api/sources — the sites the scraper visits.
+// SourcesHandler GET /api/sources — the sites the scraper visits, and
+// what each of them is contributing.
 //
-//	GET    lists them, with what each is contributing
-//	POST   {"url":…, "category":…, "kind":…, "venuePostcode":…} adds one
-//	DELETE ?name=… removes one, and remembers that it was removed
-//
-// Adding a source only writes a row: the server itself never fetches
-// anything, so the site is visited by the scraper on its next run.
+// Read-only. Sources used to be rows anyone could add here, and adding one
+// wrote a row rather than fetching anything. That is gone: these sites
+// differ too much to be read by a generic engine, so each has a parser
+// written against it and the list is whatever the scraper has code for.
+// Update (POST /api/sources/update) is the one thing this page can still
+// ask for.
 func SourcesHandler(s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		switch r.Method {
-		case http.MethodGet:
-			sources, err := s.Sources()
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, err.Error())
-				return
-			}
-			writeJSON(w, http.StatusOK, map[string]any{
-				"sources": sources,
-				"kinds":   store.SourceKinds,
-			})
-
-		case http.MethodPost:
-			var body struct {
-				URL           string `json:"url"`
-				Category      string `json:"category"`
-				Kind          string `json:"kind"`
-				VenueName     string `json:"venueName"`
-				VenuePostcode string `json:"venuePostcode"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				writeError(w, http.StatusBadRequest, "expected a JSON body")
-				return
-			}
-			source, err := s.AddSource(body.URL, body.Category, body.Kind,
-				body.VenueName, body.VenuePostcode)
-			if err != nil {
-				// Everything AddSource rejects is something the person
-				// typed, so it is a 400 with the reason they need to read.
-				writeError(w, http.StatusBadRequest, err.Error())
-				return
-			}
-			slog.Info("source added", "name", source.Name, "url", source.URL)
-			writeJSON(w, http.StatusCreated, source)
-
-		case http.MethodDelete:
-			name := r.URL.Query().Get("name")
-			if err := s.DeleteSource(name); err != nil {
-				writeError(w, http.StatusBadRequest, err.Error())
-				return
-			}
-			writeJSON(w, http.StatusOK, map[string]any{"deleted": name})
-
-		default:
-			w.Header().Set("Allow", "GET, POST, DELETE")
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
 			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
 		}
+
+		sources, err := s.Sources()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"sources": sources})
 	}
 }
 

@@ -14,7 +14,7 @@ from functools import partial
 from daysout_scraper import browser
 from daysout_scraper.fetch import USER_AGENT, Fetcher
 from daysout_scraper.pipeline import run_source
-from daysout_scraper.sources.feeds import FeedSource
+from daysout_scraper import jsonld
 from schema import SCHEMA
 
 # Nothing in the served HTML; the event is injected after load — the exact
@@ -52,6 +52,36 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 @unittest.skipUnless(browser.available() and browser.find_chromium() is not None,
                      "playwright not installed")
+class OnePage:
+    """The smallest source that can show what rendering changes.
+
+    Reads Event JSON-LD from a single page, with or without a browser. The
+    sources that need rendering are written in code and are each about a
+    real site; this one exists so the test is about the renderer and
+    nothing else.
+    """
+
+    category = "craft"
+
+    def __init__(self, name, url, render):
+        self.name = name
+        self.url = url
+        # __main__ starts a Renderer only for sources declaring this kind.
+        self.kind = "browser" if render else ""
+        self.render = render
+
+    def scrape(self, fetcher, max_pages=0):
+        body = fetcher.get(self.url, render=self.render)
+        for obj in jsonld.extract_objects(body):
+            event = jsonld.parse_event(obj, self.url)
+            if event:
+                event["category"] = self.category
+                yield "event", event
+
+    def link_event(self, event):
+        return None
+
+
 class BrowserSourceTest(unittest.TestCase):
 
     @classmethod
@@ -75,14 +105,14 @@ class BrowserSourceTest(unittest.TestCase):
         fetcher = Fetcher(tempfile.mkdtemp())
 
         # Without a browser the page yields nothing...
-        plain = FeedSource((1, "fairs-plain", url, "jsonld", "craft"))
+        plain = OnePage("fairs-plain", url, render=False)
         run_source(db, fetcher, plain)
         self.assertEqual(
             db.execute("SELECT COUNT(*) FROM events").fetchone()[0], 0,
             "the served HTML should contain no events")
 
         # ...and with one, the event and its venue both arrive.
-        rendered = FeedSource((2, "fairs-browser", url, "browser", "craft"))
+        rendered = OnePage("fairs-browser", url, render=True)
         try:
             with browser.Renderer(USER_AGENT) as renderer:
                 fetcher.renderer = renderer

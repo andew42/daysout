@@ -44,19 +44,22 @@ events would therefore need either a feed from them or a page fetched by a
 person in their own browser.
 
 **National Trust properties are unaffected.** They reach the map from
-Wikidata, as they always have, and the Sources tab still refuses
-nationaltrust.org.uk — that guard is about the site's refusal, not about
-which of our code exists.
+Wikidata, as they always have.
 
 ### Which event sources actually work
 
-Event sources live in the `sources` table, so trying a new listing site is
-a row, not a code change — add one from the **Sources** tab in the web UI
-(or by hand, plus `python3 -m daysout_scraper.discover`). Adding a site
-only records it. Each source shows how many events and places it is
-actually contributing, so a site that publishes a sitemap and yields
-nothing is visibly different from one that works — click the count to see
-the events themselves; **Update** runs a full
+Every source has a parser written for it. Sources used to be rows in a
+table, added from the **Sources** tab and read by a generic engine that
+picked an extractor by kind — which meant trying a new listing site was an
+INSERT rather than a release. That is gone: these sites publish in too
+many different shapes for one engine to read, so a new source starts with
+`python3 -m daysout_scraper.discover --url <site>` to see what the site
+actually offers, and ends with a parser written against it.
+
+The Sources tab is now a report. Each source shows how many events and
+places it is actually contributing, so one that yields nothing is visibly
+different from one that works — click the count to see the events
+themselves; **Update** runs a full
 crawl of that one site and shows what came back — the events it read, or the reason there were
 none. A test samples the site rather than crawling it, so it can add
 events but never remove any. Sites not tested by hand are picked up by
@@ -68,23 +71,22 @@ result is worth knowing before adding more:
 |--------|--------|
 | English Heritage | **Works** — 392 properties, ~119 events, Event JSON-LD per page |
 | National Trust | Source removed. robots.txt permits `/visit/**`; the site answers with a 118 KB bot-protection challenge. Its properties still come from Wikidata — see above |
-| RHS | **Works** — five flower shows; they publish a postcode with no venue name, so the venue is created from it |
+| RHS | **Works** — five flower shows, each with Event JSON-LD on its own page. The listing page has none, which is why a source aimed at the site root found nothing |
 | NGS open gardens | **Works** — 214 gardens, 461 open days, from the find-a-garden JSON API. The "open this week" page is a hub of regional links, which is why rendering it found nothing |
-| Historic Houses, Invitation to View | Sitemap only — WebPage/Article JSON-LD, no events |
-| Creative Crafts | Sitemap but no Event JSON-LD |
-| Brighton Open Houses | Retired — an open-houses trail publishes its dates in prose on a festival page, not per house |
-| The Festival Calendar (art/food/music) | Sitemap only, no Event JSON-LD |
+| IACF antiques fairs | **Works** — 28 fairs across seven showgrounds, from the combined iCal feed its calendar page offers |
+| Historic Houses | **Works** — 579 houses from its own sitemap; places only, no events |
+| Invitation to View, Creative Crafts, The Festival Calendar (art/food/music) | Dropped. Sitemap only, no Event JSON-LD, and nothing after rendering either |
+| Brighton Open Houses | Dropped — an open-houses trail publishes its dates in prose on a festival page, not per house |
 | Food festival blog | **Works** — 80 festivals. BlogPosting JSON-LD and no postcode anywhere, so the dates come from its markup and the towns from the place-name gazetteer |
-| UK Craft Fairs | No structured data; malformed HTTP headers |
+| UK Craft Fairs | **Works** — its calendar is the index and each fair's own page carries the JSON-LD. No structured data on the listing; malformed HTTP headers, so it can only be rendered |
 
-Most of those "sitemap only" sites build their listings in the browser, so
-a **browser scanner** (source kind `browser`) now renders the page in
-headless Chromium before reading it — which is what a visitor's browser
-does, and nothing more. It is deliberately not used on National Trust:
-where that site answers with a bot-protection challenge, rendering past it
-would be evading an access control rather than reading a page — so the
-Sources tab won't let you point a renderer at it, and that refusal stayed
-behind when the source itself was removed.
+Some sites build their listings in the browser, so a source may render the
+page in headless Chromium before reading it — which is what a visitor's
+browser does, and nothing more. UK Craft Fairs is the one that needs it.
+Rendering is deliberately never used to get past a refusal: where a site
+answers with a bot-protection challenge, rendering past it would be
+evading an access control rather than reading a page, so
+`looks_like_a_challenge` notices one and the source stops.
 
 Browser automation is optional. Without Playwright installed those sources
 are skipped with a warning and everything else runs as before:
@@ -105,12 +107,12 @@ and the rendered page side by side — dates, date-carrying elements, event
 links — and says which of the two failure modes applies (the listing is
 there but unstructured, or it never reaches the page at all).
 
-Sources that yield nothing even rendered are kept as rows, disabled, with the reason in
-`notes` — so the daily scrape doesn't spend requests on them and nobody
-rediscovers the same dead ends. The common thread is that these sites build
-their listings client-side or behind a search form, so the dates a visitor
-sees never reach the HTML. That is a property of the sites: English
-Heritage and RHS are read fine by the same generic crawl.
+Sites that yielded nothing even rendered were dropped rather than left in
+a table reporting the same failure nightly. The common thread is that they
+build their listings client-side or behind a search form, so the dates a
+visitor sees never reach the HTML — and where that is true, the answer is
+usually not a heavier tool but a different address: the data is often in
+an API the site's own front end calls, as it was for Waddesdon and NGS.
 
 ## How it works
 

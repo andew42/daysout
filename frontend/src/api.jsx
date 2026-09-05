@@ -52,17 +52,10 @@ export function fetchSources() {
   return getJSON('/api/sources')
 }
 
-// Adds a site for the scraper to visit on its next run. The server only
-// records the row — nothing is fetched at this point, so a site that turns
-// out to publish nothing usable is reported later, in its lastStatus.
-export function addSource({ url, category, kind, venueName, venuePostcode }) {
-  return sendJSON('/api/sources', 'POST',
-    { url, category, kind, venueName, venuePostcode })
-}
-
-export function deleteSource(name) {
-  return sendJSON(`/api/sources?name=${encodeURIComponent(name)}`, 'DELETE')
-}
+// Sources could once be added and removed from here, when they were rows
+// in a table read by a generic engine. They are written in code now — the
+// sites differ too much to be read any other way — so the list is fixed
+// and Update is the only thing this page can ask for.
 
 // Runs the scraper for one source now, instead of waiting for the daily
 // timer, and returns what it did. A full crawl, so this source's events

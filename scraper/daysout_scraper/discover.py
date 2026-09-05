@@ -95,20 +95,23 @@ def probe(fetcher, url, render=False):
 
 
 def main():
-    """Probe every source in the table and record what each one offers."""
+    """Report what one site publishes, before anybody writes a parser for it.
+
+    This used to probe every row of a `sources` table and record a verdict
+    against each. There is no such table now — every source is written in
+    code — so what is left is the half that was always the useful one:
+    point it at a URL and it says what that page offers.
+    """
 
     import argparse
     import os
     import sys
     from pathlib import Path
 
-    from . import db as dbmod
     from .fetch import USER_AGENT, Fetcher
-    from .sources import seed_sources
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--db", default="")
-    parser.add_argument("--url", default="", help="probe one URL instead of the table")
+    parser.add_argument("--url", required=True, help="the page to probe")
     parser.add_argument("--browser", action="store_true",
                         help="render the URL in a headless browser before "
                              "probing, for client-side-rendered listings")
@@ -119,66 +122,28 @@ def main():
                         help="when a page carries no dates, report what it "
                              "does carry: iframes, search forms, and any "
                              "repeated row-shaped blocks")
-    parser.add_argument("--disable-empty", action="store_true",
-                        help="disable sources that offer nothing usable")
-    parser.add_argument("--all", action="store_true",
-                        help="also probe disabled sources (their verdicts are "
-                             "already recorded in notes; re-probing them costs "
-                             "a minute and buries the live output in noise)")
+    parser.add_argument("--cache", default="",
+                        help="page cache directory (default: alongside the data dir)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
     data = os.environ.get("DAYSOUT_DATA") or "data"
-    path = args.db or str(Path(data) / "daysout.db")
-    if not Path(path).exists():
-        sys.exit(f"database {path} not found — start the server once to create it")
+    fetcher = Fetcher(args.cache or str(Path(data) / "scrape-cache"))
 
-    db = dbmod.connect(path)
-    fetcher = Fetcher(str(Path(path).parent / "scrape-cache"))
-
-    if args.url:
-        if args.browser:
-            from . import browser
-            if not browser.available():
-                sys.exit("playwright is not installed (pip install playwright)")
-            with browser.Renderer(USER_AGENT) as renderer:
-                fetcher.renderer = renderer
-                print(describe(probe(fetcher, args.url, render=True)))
-                inspect_dom(fetcher, args.url, rendered=True, deep=args.deep,
-                            fresh=args.fresh)
-            return
-        print(describe(probe(fetcher, args.url)))
-        inspect_dom(fetcher, args.url, deep=args.deep, fresh=args.fresh)
+    if args.browser:
+        from . import browser
+        if not browser.available():
+            sys.exit("playwright is not installed (pip install playwright)")
+        with browser.Renderer(USER_AGENT) as renderer:
+            fetcher.renderer = renderer
+            print(describe(probe(fetcher, args.url, render=True)))
+            inspect_dom(fetcher, args.url, rendered=True, deep=args.deep,
+                        fresh=args.fresh)
         return
 
-    added = seed_sources.ensure(db)
-    if added:
-        print(f"seeded {added} candidate source(s)")
-
-    query = "SELECT name, url FROM sources"
-    if not args.all:
-        query += " WHERE enabled = 1"
-    rows = db.execute(query + " ORDER BY name").fetchall()
-    disabled = db.execute(
-        "SELECT COUNT(*) FROM sources WHERE enabled = 0").fetchone()[0]
-    print(f"probing {len(rows)} enabled source(s)"
-          f"{f', skipping {disabled} disabled (--all to include)' if disabled and not args.all else ''}\n")
-    usable = 0
-    for name, url in rows:
-        report = probe(fetcher, url)
-        print(f"# {name}")
-        print(describe(report))
-        print()
-        status = ", ".join(report["formats"]) or "nothing usable"
-        db.execute("UPDATE sources SET last_status = ? WHERE name = ?", (status, name))
-        if report["formats"]:
-            usable += 1
-        elif args.disable_empty:
-            db.execute("UPDATE sources SET enabled = 0 WHERE name = ?", (name,))
-            print(f"  (disabled {name})\n")
-    db.commit()
-    print(f"{usable}/{len(rows)} source(s) publish something machine-readable")
+    print(describe(probe(fetcher, args.url)))
+    inspect_dom(fetcher, args.url, deep=args.deep, fresh=args.fresh)
 
 
 def inspect_dom(fetcher, url, rendered=False, deep=False, fresh=False):

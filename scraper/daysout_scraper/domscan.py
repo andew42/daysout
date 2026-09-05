@@ -20,8 +20,8 @@ from bs4 import BeautifulSoup
 from . import jsonld
 
 # Paths that look like a single event or open day rather than a section
-# front page. Shared with sources/feeds.py, which uses it to choose which
-# sitemap entries are worth fetching.
+# front page, used when reporting which links on a page look worth
+# fetching.
 EVENT_URL_HINT_RE = re.compile(
     r"/(events?|whats-on|what-s-on|fairs?|festivals?|shows?|exhibitions?|"
     r"open-gardens?|find-a-garden|gardens?-open|open-days?|visit)\b",

@@ -59,7 +59,7 @@ import logging
 from datetime import date
 
 from .. import dates
-from .feeds import _plain
+from ..text import plain
 
 log = logging.getLogger(__name__)
 
@@ -157,7 +157,7 @@ def _categories(fetcher):
     body = fetcher.get(f"{CATEGORIES_API}?per_page={PER_PAGE}", api=True)
     found = {}
     for term in json.loads(body):
-        mapped = CATEGORIES.get(_plain(term.get("name")).lower())
+        mapped = CATEGORIES.get(plain(term.get("name")).lower())
         if mapped:
             found[term.get("id")] = mapped
     return found
@@ -177,7 +177,7 @@ def parse_event(record, categories, default_category):
     if end < start:
         end = start
 
-    title = _plain(record.get("title"))
+    title = plain(record.get("title"))
     if not title:
         return None
 
@@ -226,8 +226,8 @@ def _description(record, meta):
     out when it is only restating the dates.
     """
 
-    text = _plain(record.get("excerpt"))[:400]
-    when = _plain(meta.get("rothschild_event_date_range_display"))
+    text = plain(record.get("excerpt"))[:400]
+    when = plain(meta.get("rothschild_event_date_range_display"))
     if when and not _is_plain_dates(when):
         return f"{when}. {text}".strip()
     return text

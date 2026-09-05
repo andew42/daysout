@@ -1,41 +1,44 @@
-"""Source registry.
+"""Source registry — every source the scraper runs.
+
+There is no other kind. A `sources` table used to hold listing sites as
+rows, with a generic engine that picked an extractor by kind (ical,
+jsonld, sitemap, browser, wpevents, auto), so adding a site was an INSERT
+rather than a release. The idea was sound and the results were not: these
+sites differ so much that reading one takes a parser written against it,
+and rows added without that investigation reported an empty site for
+ever. What survived from the table is here, written in code.
 
 Wikidata supplies destinations (CC0 open data, one query per category),
-National Trust properties among them; English Heritage's own site supplies
-its properties and is the route to event listings. Historic Houses supplies
-the privately owned houses both of the big charities leave out, and
-Shuttleworth its own air shows — one venue whose pages carry no structured
-data at all. UK Craft Fairs is a listing site that can only be rendered,
-never fetched, because its server's headers are malformed; its calendar is
-the index and each fair's own page carries the Event JSON-LD and the
-postcode. Lamport Hall is a second single venue with no structured data,
-and the only one whose dates state no year at all. Waddesdon is the
-opposite case: its pages carry nothing either, but the site publishes its
-own events REST API, so it is read in two requests rather than crawled.
-Food festivals is a blog roundup with no postcode anywhere, placed by town
-through the gazetteer. NGS reads open gardens from the find-a-garden API.
+National Trust properties among them; English Heritage's own site
+supplies its properties and is the route to its event listings. Historic
+Houses supplies the privately owned houses both of the big charities
+leave out. Shuttleworth and Lamport Hall are single venues whose pages
+carry nothing machine-readable — Lamport's dates state no year at all.
+Waddesdon and NGS are the opposite: their pages carry nothing either, but
+each publishes a JSON API, so they are read in a request or two rather
+than crawled. UK Craft Fairs can only be rendered, never fetched, because
+its server's headers are malformed. Food festivals is a blog roundup with
+no postcode anywhere, placed by town through the gazetteer. IACF is one
+iCal feed covering seven showgrounds. RHS is five big shows, each with
+Event JSON-LD on its own page and none on the listing.
 See each module's docstring.
-
-There was a National Trust events source here. It never contributed: the
-site answers automated clients with a bot-protection challenge, and we do
-not work around one. It has been removed rather than kept waiting for that
-to change — NT properties still reach the map from Wikidata, which is
-where they always came from.
 """
 
 from .english_heritage import EnglishHeritage
 from .foodfestivals import FoodFestivals
 from .historic_houses import HistoricHouses
+from .iacf import IACF
 from .lamporthall import LamportHall
 from .ngs import NGS
+from .rhs import RHS
 from .shuttleworth import Shuttleworth
 from .ukcraftfairs import UKCraftFairs
 from .waddesdon import Waddesdon
 from .wikidata import Wikidata
 
-IMPLEMENTED = [Wikidata, EnglishHeritage, HistoricHouses,
-               Shuttleworth, UKCraftFairs, LamportHall, Waddesdon,
-               FoodFestivals, NGS]
+IMPLEMENTED = [Wikidata, EnglishHeritage, HistoricHouses, Shuttleworth,
+               UKCraftFairs, LamportHall, Waddesdon, FoodFestivals, NGS,
+               IACF, RHS]
 
 # Researched, not yet implemented:
 #   airfields.py air show calendars

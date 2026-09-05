@@ -54,39 +54,12 @@ CREATE TABLE IF NOT EXISTS places (
     lon  REAL NOT NULL
 );
 
--- Where events come from. Kept in the database rather than in code so a new
--- listing site is a row, not a release: the scraper reads this table and
--- picks an extractor by kind.
-CREATE TABLE IF NOT EXISTS sources (
-    id          INTEGER PRIMARY KEY,
-    name        TEXT NOT NULL UNIQUE,
-    url         TEXT NOT NULL,
-    kind        TEXT NOT NULL DEFAULT 'auto',  -- auto|wpevents|ical|jsonld|sitemap|browser
-    category    TEXT NOT NULL DEFAULT '',      -- default category for its events
-    enabled     INTEGER NOT NULL DEFAULT 1,
-    notes       TEXT NOT NULL DEFAULT '',
-    added       TEXT NOT NULL,
-    last_status TEXT NOT NULL DEFAULT '',
-    -- Many sources are one venue's own website, where every event happens
-    -- at the same address and the pages never repeat it. Without somewhere
-    -- to put them those events are dropped, so a source may carry its
-    -- venue: used only when an event brings none of its own.
-    venue_name     TEXT NOT NULL DEFAULT '',
-    venue_postcode TEXT NOT NULL DEFAULT '',
-    -- Where a person should be sent to read this source for themselves.
-    -- url is what the scraper fetches, which for a feed is a .ics or a
-    -- "?feed=..." query string — correct to fetch and useless to click.
-    -- Blank means url is fit to show, which it is for an ordinary site.
-    site_url       TEXT NOT NULL DEFAULT ''
-);
-
--- Sources removed through the UI. The scraper re-inserts any candidate
--- missing from the sources table, so without this a removal would undo
--- itself on the next run — which is worse than refusing to remove.
-CREATE TABLE IF NOT EXISTS removed_sources (
-    name       TEXT PRIMARY KEY,
-    removed_at TEXT NOT NULL
-);
+-- There were sources and removed_sources tables here, holding listing
+-- sites as rows so a new one was an INSERT rather than a release, and a
+-- record of the ones removed through the UI so a removal did not undo
+-- itself. Both are gone, and migrate.go drops them from databases that
+-- still have them: the sites differ too much for a generic engine to read,
+-- so every source is written in code and the list of them lives there.
 
 CREATE TABLE IF NOT EXISTS scrape_runs (
     id          INTEGER PRIMARY KEY,

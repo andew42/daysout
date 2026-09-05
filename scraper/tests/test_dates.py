@@ -11,7 +11,7 @@ import unittest
 
 from daysout_scraper import dates
 from daysout_scraper import db as dbmod
-from daysout_scraper.sources.feeds import FeedSource
+from daysout_scraper.text import plain
 
 from schema import SCHEMA
 
@@ -65,39 +65,28 @@ class TestTheStoreRefusesABadDate(unittest.TestCase):
             self.db.execute("SELECT COUNT(*) FROM events").fetchone()[0], 0)
 
 
-class TestTheApiRouteNormalises(unittest.TestCase):
-    """The truncation that caused it: "02/05/2026 10:00:00"[:10] is ten
-    characters, so the length check passed and the order was never read."""
+class TestWordPressTextIsDecodedTwice(unittest.TestCase):
+    """The other half of the Stonor lesson, which outlived its engine.
 
-    def source(self):
-        return FeedSource((1, "stonor-whats-on", "https://www.stonor.com/",
-                           "wpevents", "historic-house", "Stonor Park", "RG9 6HF"))
+    These arrived with a WordPress events API that no longer has a reader
+    here, but the escaping is not WordPress's alone: anywhere text comes
+    out of somebody's template, assume it is escaped once too often.
+    "Medieval Jousting &amp;#8211; 2nd to 4th May" survives one decode as
+    "&#8211;", which is what reached the page.
+    """
 
-    def test_a_day_first_api_date_becomes_iso(self):
-        event = self.source()._api_event({
-            "id": 7,
-            "title": {"rendered": "Medieval Jousting &amp;#8211; 2nd to 4th May"},
-            "start_date": "02/05/2026 10:00:00",
-            "end_date": "04/05/2026 17:00:00",
-            "venue": {"venue": "Stonor Park", "zip": "rg9 6hf"},
-        })
-        self.assertEqual(event["start_date"], "2026-05-02")
-        self.assertEqual(event["end_date"], "2026-05-04")
+    def test_a_double_encoded_entity_is_decoded(self):
+        self.assertEqual(
+            plain({"rendered": "Medieval Jousting &amp;#8211; 2nd to 4th May"}),
+            "Medieval Jousting – 2nd to 4th May")
 
-    def test_double_encoded_entities_are_decoded(self):
-        # "Medieval Jousting &#8211; 2nd to 4th May" reached the page.
-        event = self.source()._api_event({
-            "id": 7,
-            "title": {"rendered": "Medieval Jousting &amp;#8211; 2nd to 4th May"},
-            "start_date": "02/05/2026 10:00:00",
-            "venue": {"venue": "Stonor Park", "zip": "RG9 6HF"},
-        })
-        self.assertEqual(event["title"], "Medieval Jousting – 2nd to 4th May")
+    def test_markup_is_stripped(self):
+        self.assertEqual(plain({"rendered": "<p>A <b>fine</b> fair</p>"}),
+                         "A fine fair")
 
-    def test_an_event_with_an_unusable_date_is_dropped_not_guessed_at(self):
-        self.assertIsNone(self.source()._api_event({
-            "id": 8, "title": "Mystery", "start_date": "soon",
-            "venue": {"venue": "Stonor Park", "zip": "RG9 6HF"}}))
+    def test_nothing_at_all(self):
+        self.assertEqual(plain(None), "")
+        self.assertEqual(plain({}), "")
 
 
 class TestUnpaddedISO(unittest.TestCase):

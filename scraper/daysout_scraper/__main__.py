@@ -19,7 +19,6 @@ from . import runlock
 from . import sources
 from .fetch import USER_AGENT, Fetcher
 from .pipeline import run_source
-from .sources import feeds, seed_sources
 
 log = logging.getLogger(__name__)
 
@@ -60,20 +59,16 @@ def main():
     db = dbmod.connect(args.db)
     fetcher = Fetcher(args.cache or str(Path(args.db).parent / "scrape-cache"))
 
-    # Sources written in code, plus every enabled row of the sources table.
-    seed_sources.ensure(db)
+    # Every source is written in code. There was a `sources` table too,
+    # and a generic engine that turned a row into a runnable source, so a
+    # new listing site was an INSERT rather than a release. It did not
+    # earn its keep: the sites differ so much that reading one takes a
+    # parser written against it, and rows added blind mostly reported an
+    # empty site for ever.
     wanted = args.sources.split(",") if args.sources else []
     selected = [s() for s in sources.IMPLEMENTED if not wanted or s.name in wanted]
-
-    # A code source wins a name outright. Both lists run in one pass, so a
-    # table row sharing a name would scrape the same site a second way and
-    # overwrite the better run's result with its own.
-    in_code = {s.name for s in sources.IMPLEMENTED}
-    selected += [s for s in feeds.load_enabled(db)
-                 if (not wanted or s.name in wanted) and s.name not in in_code]
     if not selected:
-        available = [s.name for s in sources.IMPLEMENTED] + \
-                    [s.name for s in feeds.load_enabled(db)]
+        available = [s.name for s in sources.IMPLEMENTED]
         sys.exit(f"no matching sources; available: {', '.join(available)}")
 
     # Rendering costs a browser launch, so start one only if a source in
