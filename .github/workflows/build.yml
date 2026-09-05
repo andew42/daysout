@@ -107,6 +107,9 @@ jobs:
       - name: Coordinate conversion self-test
         run: python ../setup/import_postcodes.py --self-test
 
+      - name: Place-name gazetteer self-test
+        run: python ../setup/import_places.py --self-test
+
   package:
     name: Package (install bundle)
     runs-on: ubuntu-latest

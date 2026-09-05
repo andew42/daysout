@@ -84,6 +84,24 @@ jobs:
             sudo python3 /opt/daysout/setup/import_postcodes.py --db /var/lib/daysout/daysout.db
           fi
 
+      - name: Import place names (first deploy only)
+        # Read straight from the table rather than the status API: a
+        # database from before this table existed answers with an
+        # OperationalError, which is the same "not imported yet" as zero.
+        run: |
+          COUNT=$(sudo python3 -c "
+          import sqlite3
+          db = sqlite3.connect('/var/lib/daysout/daysout.db')
+          try:
+              print(db.execute('SELECT COUNT(*) FROM places').fetchone()[0])
+          except sqlite3.OperationalError:
+              print(0)")
+          if [ "$COUNT" -gt 0 ]; then
+            echo "places table already has $COUNT rows — skipping"
+          else
+            sudo python3 /opt/daysout/setup/import_places.py --db /var/lib/daysout/daysout.db
+          fi
+
       - name: Download map tiles (first deploy only)
         # The script itself skips when a valid archive exists and re-fetches
         # a partial one, so it's safe to run every deploy.
