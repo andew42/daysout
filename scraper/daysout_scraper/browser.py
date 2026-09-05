@@ -8,7 +8,7 @@ what a visitor sees, and nothing more.
 
 This is deliberately NOT a way around a site that is refusing us. A site
 that answers a plain request with a bot-protection challenge (see
-sources/national_trust.py) is saying no, and a browser that solves the
+fetch.looks_like_a_challenge) is saying no, and a browser that solves the
 challenge would be evading an access control rather than reading a page.
 Rendering is for pages that are freely served but assembled in the client.
 The same politeness applies as everywhere else: robots.txt is checked

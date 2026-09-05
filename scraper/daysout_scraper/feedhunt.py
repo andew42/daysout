@@ -31,9 +31,8 @@ from collections import Counter
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
-from .fetch import USER_AGENT, Fetcher
+from .fetch import USER_AGENT, Fetcher, looks_like_a_challenge
 from .sitemap_source import sitemap_urls
-from .sources.national_trust import looks_like_a_challenge
 
 log = logging.getLogger(__name__)
 

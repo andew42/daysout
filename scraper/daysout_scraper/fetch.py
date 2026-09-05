@@ -29,6 +29,36 @@ RETRY_STATUS = {429, 500, 502, 503, 504}
 RETRY_ATTEMPTS = 3
 RETRY_BACKOFF_SECONDS = 5
 
+# Phrases that appear on a bot-protection interstitial rather than on a
+# page of the site. Seeing one means the site declined to serve us, which
+# is a different thing from a page having no events on it — and the
+# difference matters, because one is worth retrying tomorrow and the other
+# means our patterns are wrong.
+CHALLENGE_MARKERS = (
+    "radware",
+    "captcha-delivery",
+    "request unsuccessful",
+    "incapsula",
+    "are you a human",
+    "enable javascript and cookies to continue",
+)
+
+
+def looks_like_a_challenge(html):
+    """True if this is an interstitial refusing us rather than page content.
+
+    Deliberately checked against the start of the document only: the words
+    below are common enough that a real page could mention one in passing,
+    but a challenge page says it up front and carries little else.
+
+    Lives here rather than with any one source because it describes what a
+    *server* returned. It arrived with the National Trust source, which is
+    gone; `feedhunt` and the sources that report "nobody is turning us
+    away" still need it.
+    """
+    head = html[:4000].lower()
+    return any(marker in head for marker in CHALLENGE_MARKERS)
+
 
 class Fetcher:
     def __init__(self, cache_dir):
@@ -80,7 +110,7 @@ class Fetcher:
         about a client calling it as the API it is. Rate limiting, the
         honest User-Agent and the cache still apply, so we stay a
         well-behaved client either way. Never set this to get past a site
-        that is refusing us (see sources/national_trust.py).
+        that is refusing us (see looks_like_a_challenge above).
         """
         cache_key = ("render:" if render else "") + url
         cache_file = self.cache_dir / hashlib.sha256(cache_key.encode()).hexdigest()

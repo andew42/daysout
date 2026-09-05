@@ -23,7 +23,7 @@ daysout/
 │                       SourcesView, api, settings, links
 ├── scraper/           Python 3.11+ package (requests + beautifulsoup4)
 │   ├── daysout_scraper/          pipeline, polite fetcher, JSON-LD engine
-│   ├── daysout_scraper/sources/  national_trust, english_heritage,
+│   ├── daysout_scraper/sources/  wikidata, english_heritage,
 │   │                             historic_houses, shuttleworth,
 │   │                             ukcraftfairs, lamporthall, waddesdon,
 │   │                             foodfestivals, ngs
@@ -88,28 +88,28 @@ daysout/
   engine in `sitemap_source.py`/`jsonld.py`) for their own properties and
   events. Politeness: robots.txt, 1 req/s/host, honest UA, 20h on-disk
   cache. Each source run is logged to `scrape_runs`.
-- **National Trust: events only, and it stops when told no.** Each
-  property publishes an events page
-  (`/visit/<region>/<property>/events`), which robots.txt permits and
-  which the old patterns missed entirely — they matched only
-  `<property>/events/<slug>`. Both shapes are now read. Property pages are
-  deliberately *not* crawled: Wikidata already supplies the properties, and
-  the engine visits places before events, so crawling them would spend the
-  run's first requests on the pages most likely to be challenged before
-  reaching any event. `looks_like_a_challenge()` detects a bot-protection
-  interstitial and sets `blocked`. A canary request runs before the
-  sitemap so a refusal costs one request, and `failure_note` makes the run
-  say it was refused rather than "no places found", which cannot tell a
-  refusal apart from stale URL patterns. **Measured 30 Aug 2026 on the
-  house server: robots.txt allows the events pages and the site still
-  returns a 118,419-byte challenge with no JSON-LD.** So this source
-  currently contributes nothing, by the site's choice, and is kept because
-  it will work unchanged if that ever stops. We still never work around a
-  challenge — no disguised User-Agent, no
-  solving it, no rotating identities; the point of detecting it is to stop
-  and say so rather than collect hundreds of refusals and report an empty
-  site. NT event ids are `<property>-<title>-<start date>` so an event
-  found on both the listing and its own page is one row.
+- **The National Trust source is gone, and the refusal it met is not.**
+  It read one events page per property and never contributed a row:
+  **measured 30 Aug 2026 on the house server, robots.txt allows those
+  pages and the site still answers with a 118,419-byte bot-protection
+  challenge carrying no JSON-LD.** It was kept for a while on the grounds
+  that it would work unchanged if that ever stopped; it was removed
+  instead, because a source that cannot run is upkeep with no return, and
+  the version in git is there if the site ever opens up. **NT properties
+  are unaffected** — they always came from Wikidata (`wdt:P137
+  wd:Q333515`, 369 of them with coordinates) and still do. Two things
+  survive the removal deliberately. `fetch.looks_like_a_challenge` moved
+  out of that module into `fetch.py`, where it belongs anyway: it
+  describes what a *server* returned, `feedhunt` uses it on any site, and
+  several sources cite it to say "nobody is turning us away". And
+  `refusedHosts` in `backend/store/sources.go` still names
+  nationaltrust.org.uk — the guard is about the site's refusal, not about
+  our source existing, and without it the Sources tab would accept the
+  host and `kind='browser'` would point a renderer at an access control.
+  We never work around a challenge: no disguised User-Agent, no solving
+  it, no rotating identities. The point of detecting one is to stop and
+  say so rather than collect hundreds of refusals and report an empty
+  site.
 - **Bounded runs never purge**: `--max-pages` runs (verification deploys)
   set `partial` and skip `purge_stale`, because a run that only looked at
   part of a source knows nothing about the rest.
@@ -139,8 +139,9 @@ daysout/
   a bot-protection challenge is saying no, and a browser that defeats the
   challenge would be evading an access control rather than reading a page.
   National Trust must never be given kind='browser'; `refusedHosts` in
-  `backend/store/sources.go` keeps it out of the Sources tab, and the code
-  source stops rather than pushes on.
+  `backend/store/sources.go` keeps it out of the Sources tab, and stays
+  there now the code source that used to read it has gone — the guard is
+  about what the site does, not about which of our code exists.
 - **Dates are ISO or they are nothing** (`scraper/daysout_scraper/dates.py`).
   They are stored as text and every query compares them as text, so a date
   in another shape does not look odd — it fails `end_date >= today` and the

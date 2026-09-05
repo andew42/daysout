@@ -20,17 +20,17 @@ and English Heritage properties, gardens, aviation museums); English
 Heritage's own site is crawled via its sitemap for schema.org JSON-LD.
 Both feed the same destinations and events tables.
 
-National Trust would contribute **events** — each property publishes an
-events page (`/visit/<region>/<property>/events`) — and the scraper knows
-how to read them. It cannot: measured on real hardware, robots.txt allows
-those pages and the site still answers with a 118 KB Radware
-bot-protection challenge carrying no data. So the source probes one page
-before crawling anything, records that it was refused, and stops. Working
+There was a National Trust events source and it has been removed. Each
+property publishes an events page (`/visit/<region>/<property>/events`)
+and the scraper knew how to read them, but it never could: measured on
+real hardware, robots.txt allows those pages and the site still answers
+with a 118 KB Radware bot-protection challenge carrying no data. Working
 around a challenge (a disguised User-Agent, solving it, rotating
 identities) would circumvent an access control the owner put there on
-purpose, and is not something this scraper does. If the site ever serves
-those pages, the source starts working with no further changes; National
-Trust properties reach the map from Wikidata in the meantime.
+purpose, and is not something this scraper does — so the source probed one
+page, recorded that it was refused, and stopped. It was kept for a while
+in case the site opened up, then deleted: code that cannot run is upkeep
+with no return, and git remembers it.
 
 A hunt for a route they do sanction (`python3 -m daysout_scraper.feedhunt
 --url <site>`, 30 Aug 2026) came back empty: robots.txt declares no
@@ -40,8 +40,13 @@ with the same challenge), and — the route with the best odds — the
 sitemap's event URLs carry **no dates at all**, so a URL list alone gives
 titles with nothing to put them on a calendar with. English Heritage's
 slugs do carry dates, which is why it was worth checking. Getting NT
-events therefore needs either a feed from them or a page fetched by a
+events would therefore need either a feed from them or a page fetched by a
 person in their own browser.
+
+**National Trust properties are unaffected.** They reach the map from
+Wikidata, as they always have, and the Sources tab still refuses
+nationaltrust.org.uk — that guard is about the site's refusal, not about
+which of our code exists.
 
 ### Which event sources actually work
 
@@ -62,14 +67,14 @@ result is worth knowing before adding more:
 | Source | Result |
 |--------|--------|
 | English Heritage | **Works** — 392 properties, ~119 events, Event JSON-LD per page |
-| National Trust | robots.txt permits `/visit/**`; the site answers with a 118 KB bot-protection challenge. No feed, and no dates in its URLs — see below |
+| National Trust | Source removed. robots.txt permits `/visit/**`; the site answers with a 118 KB bot-protection challenge. Its properties still come from Wikidata — see above |
 | RHS | **Works** — five flower shows; they publish a postcode with no venue name, so the venue is created from it |
-| NGS (open gardens, garden finder) | Sitemap only. Rendering the "open this week" page doubles it (110k → 240k bytes) but it is a hub: no dates, just a link per region |
+| NGS open gardens | **Works** — 214 gardens, 461 open days, from the find-a-garden JSON API. The "open this week" page is a hub of regional links, which is why rendering it found nothing |
 | Historic Houses, Invitation to View | Sitemap only — WebPage/Article JSON-LD, no events |
 | Creative Crafts | Sitemap but no Event JSON-LD |
 | Brighton Open Houses | Retired — an open-houses trail publishes its dates in prose on a festival page, not per house |
 | The Festival Calendar (art/food/music) | Sitemap only, no Event JSON-LD |
-| Food festival blog | BlogPosting JSON-LD; dates are prose |
+| Food festival blog | **Works** — 80 festivals. BlogPosting JSON-LD and no postcode anywhere, so the dates come from its markup and the towns from the place-name gazetteer |
 | UK Craft Fairs | No structured data; malformed HTTP headers |
 
 Most of those "sitemap only" sites build their listings in the browser, so
@@ -78,8 +83,8 @@ headless Chromium before reading it — which is what a visitor's browser
 does, and nothing more. It is deliberately not used on National Trust:
 where that site answers with a bot-protection challenge, rendering past it
 would be evading an access control rather than reading a page — so the
-National Trust source stops instead, and the Sources tab won't let you
-point a renderer at it.
+Sources tab won't let you point a renderer at it, and that refusal stayed
+behind when the source itself was removed.
 
 Browser automation is optional. Without Playwright installed those sources
 are skipped with a warning and everything else runs as before:

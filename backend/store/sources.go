@@ -67,15 +67,15 @@ const UIAddedNote = "added via the web UI"
 var SourceKinds = []string{"auto", "wpevents", "browser", "ical", "jsonld", "sitemap"}
 
 // refusedHosts are sites this form should not queue an attempt at. The
-// National Trust is already covered by a source written in code, which
-// reads a property's events page and stops if the site answers with a
-// bot-protection challenge; adding it here would either duplicate that or,
-// with the browser kind, point a renderer at a challenge — which would be
+// National Trust answers automated clients with a bot-protection
+// challenge. The source that used to read it is gone, but this guard is
+// not: without it the form would happily take nationaltrust.org.uk, and
+// with the browser kind that means pointing a renderer at a challenge —
 // working around an access control rather than reading a page.
 var refusedHosts = map[string]string{
-	"nationaltrust.org.uk": "National Trust events are already collected by " +
-		"the built-in source, and its properties come from Wikidata — there " +
-		"is nothing to add here.",
+	"nationaltrust.org.uk": "The National Trust declines automated clients, " +
+		"and we do not work around that. Its properties already reach the " +
+		"map from Wikidata — there is nothing to add here.",
 }
 
 var nameCleanRe = regexp.MustCompile(`[^a-z0-9]+`)
@@ -95,7 +95,7 @@ func sourceTimestamp() string {
 // a name missing from here would be treated as leftover history and hidden
 // from the Sources tab the moment its row was gone.
 var CodeSources = []string{
-	"wikidata", "english_heritage", "national_trust", "historic-houses",
+	"wikidata", "english_heritage", "historic-houses",
 	"shuttleworth-events", "uk-craft-fairs", "lamport-hall", "waddesdon",
 	"food-festivals-uk", "ngs-open-gardens",
 }

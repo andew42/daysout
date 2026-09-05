@@ -61,11 +61,13 @@ func TestAddSourceRejectsWhatCannotBeScraped(t *testing.T) {
 		{"", "enter the address"},
 		{"not a url at all", "web address"},
 		{"ftp://files.example.com/list", "http"},
-		// Already covered by a source written in code — and adding it with
-		// the browser kind would point a renderer at a site that answers
-		// automated clients with a challenge.
-		{"https://www.nationaltrust.org.uk/visit", "built-in source"},
-		{"nationaltrust.org.uk", "built-in source"},
+		// The site answers automated clients with a challenge, so adding
+		// it with the browser kind would point a renderer at an access
+		// control. The refusal outlived the code source that used to read
+		// this host, which is why it is asserted on the reason rather than
+		// on that source existing.
+		{"https://www.nationaltrust.org.uk/visit", "declines automated clients"},
+		{"nationaltrust.org.uk", "declines automated clients"},
 	}
 
 	for _, tc := range cases {

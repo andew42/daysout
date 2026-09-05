@@ -7,7 +7,7 @@ object types, the fields that matter, and what the page looks like when
 there is no JSON-LD at all — so the parser can be corrected against
 evidence instead of guesswork.
 
-    python3 -m daysout_scraper.inspect --source national_trust --kind place
+    python3 -m daysout_scraper.inspect --source historic-houses --kind place
     python3 -m daysout_scraper.inspect --source english_heritage --kind event
 
 Uses the same polite fetcher as a scrape, so pages already fetched this
