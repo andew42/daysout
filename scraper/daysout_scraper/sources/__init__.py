@@ -12,7 +12,9 @@ UK Craft Fairs is a listing site that can only be rendered, never fetched,
 because its server's headers are malformed; its calendar is the index and
 each fair's own page carries the Event JSON-LD and the postcode. Lamport
 Hall is a second single venue with no structured data, and the only one
-whose dates state no year at all.
+whose dates state no year at all. Waddesdon is the opposite case: its
+pages carry nothing either, but the site publishes its own events REST
+API, so it is read in two requests rather than crawled.
 See each module's docstring.
 """
 
@@ -22,10 +24,11 @@ from .lamporthall import LamportHall
 from .national_trust import NationalTrust
 from .shuttleworth import Shuttleworth
 from .ukcraftfairs import UKCraftFairs
+from .waddesdon import Waddesdon
 from .wikidata import Wikidata
 
 IMPLEMENTED = [Wikidata, EnglishHeritage, NationalTrust, HistoricHouses,
-               Shuttleworth, UKCraftFairs, LamportHall]
+               Shuttleworth, UKCraftFairs, LamportHall, Waddesdon]
 
 # Researched, not yet implemented:
 #   ngs.py       National Garden Scheme open days (garden events)

@@ -25,7 +25,7 @@ daysout/
 │   ├── daysout_scraper/          pipeline, polite fetcher, JSON-LD engine
 │   ├── daysout_scraper/sources/  national_trust, english_heritage,
 │   │                             historic_houses, shuttleworth,
-│   │                             ukcraftfairs, lamporthall (+ stubs)
+│   │                             ukcraftfairs, lamporthall, waddesdon
 │   └── tests/         fixture-based; python3 -m unittest discover tests
 ├── setup/             One-off data population (postcodes, map tiles)
 ├── packaging/         systemd units + timer + install.sh
@@ -179,6 +179,41 @@ daysout/
   site 5 Sep 2026: 18 pages, 15 dated, 22 events, all at NN6 9EZ.
   That postcode is the one the site gives "for satnav"; its postal
   address is NN6 9HD, and this is a tool for driving somewhere.
+- **Waddesdon** (`sources/waddesdon.py`) is the case where the pages are
+  worthless and the API is excellent. A National Trust property but not a
+  National Trust *site*: waddesdon.org.uk is the Rothschild Foundation's
+  own WordPress, `robots.txt` is `Disallow:` with nothing after it, and
+  nothing here works around anything. Its pages carry JSON-LD of type
+  WebPage/Organization only — no Event, no dates, 273 KB each — and The
+  Events Calendar is not installed, so `wpevents` does not apply. What it
+  does publish is its own post type, `rothschild_event`, at
+  **`/wp-json/wp/v2/events`**: 46 events with real dates in `meta`. Two
+  requests a run instead of 46 page fetches, which matters because
+  robots.txt asks `Crawl-delay: 10` and **the Fetcher does not implement
+  crawl-delay** — it holds a fixed per-host interval, so a page crawl here
+  would be ruder than the site asked for. Three traps. WordPress's own
+  `date` is when the entry was *published*, not when the event runs —
+  that is `meta.rothschild_event_start_date`. Half the feed is over (22 of
+  46, some from 2025, since nothing takes an old event down), so events
+  are dropped on `end_date` the way `wpevents` asks only for future ones.
+  And the API mixes "2026-10-18T13:08:53" with "2026-08-14T00:00:00+01:00",
+  where the offset is the trap: midnight on the 14th British time is 23:00
+  on the *13th* UTC, so anything converting these to an instant moves the
+  event a day — `dates.to_iso` takes the published calendar date and never
+  builds a moment, the same rule `EventsView.formatDate` follows at the
+  other end. The `event-locations` taxonomy names places *inside* the
+  estate (Wine Cellars, South Front, Aviary Glade) and is deliberately not
+  used as the venue: passing one to the pipeline would geocode a second
+  destination with no address of its own. `event-categories` *is* used,
+  mapped onto the app's own list by term **name**, because the slugs carry
+  an import artefact ("food-wine-3338" but plain "exhibitions") and the
+  names do not. Where the span is not when you can turn up — "Every Friday
+  and Saturday" runs 6-28 November — the site's own summary of when is
+  prepended to the description, since two dates alone would send a reader
+  on a Tuesday. Long programmes are stored at their true span rather than
+  clamped: `isOngoing` already files anything over `OngoingDays` as a
+  standing programme and sorts it below the special events. Measured
+  5 Sep 2026: 46 published, 22 over, 24 current, all at HP18 0JH.
 - **A code source and a `sources` row must never share a name**: both lists
   run in one pass and the loser overwrites the winner's result.
   `CodeSources` in `backend/store/sources.go` names the code sources so a
