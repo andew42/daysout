@@ -10,19 +10,22 @@ owned houses both of the big charities leave out, and Shuttleworth its
 own air shows — one venue whose pages carry no structured data at all.
 UK Craft Fairs is a listing site that can only be rendered, never fetched,
 because its server's headers are malformed; its calendar is the index and
-each fair's own page carries the Event JSON-LD and the postcode.
+each fair's own page carries the Event JSON-LD and the postcode. Lamport
+Hall is a second single venue with no structured data, and the only one
+whose dates state no year at all.
 See each module's docstring.
 """
 
 from .english_heritage import EnglishHeritage
 from .historic_houses import HistoricHouses
+from .lamporthall import LamportHall
 from .national_trust import NationalTrust
 from .shuttleworth import Shuttleworth
 from .ukcraftfairs import UKCraftFairs
 from .wikidata import Wikidata
 
 IMPLEMENTED = [Wikidata, EnglishHeritage, NationalTrust, HistoricHouses,
-               Shuttleworth, UKCraftFairs]
+               Shuttleworth, UKCraftFairs, LamportHall]
 
 # Researched, not yet implemented:
 #   ngs.py       National Garden Scheme open days (garden events)

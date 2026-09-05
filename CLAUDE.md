@@ -24,7 +24,8 @@ daysout/
 ├── scraper/           Python 3.11+ package (requests + beautifulsoup4)
 │   ├── daysout_scraper/          pipeline, polite fetcher, JSON-LD engine
 │   ├── daysout_scraper/sources/  national_trust, english_heritage,
-│   │                             historic_houses, shuttleworth (+ stubs)
+│   │                             historic_houses, shuttleworth,
+│   │                             ukcraftfairs, lamporthall (+ stubs)
 │   └── tests/         fixture-based; python3 -m unittest discover tests
 ├── setup/             One-off data population (postcodes, map tiles)
 ├── packaging/         systemd units + timer + install.sh
@@ -147,6 +148,37 @@ daysout/
   page has date-looking text" (seven phrases per page) is worthless here.
   `domscan.date_context` is what found the anchor, and is the tool to
   reach for on the next site like it.
+- **Lamport Hall** (`sources/lamporthall.py`) is the second single venue
+  with nothing machine-readable — no Event JSON-LD, no `<time>`, no events
+  API, no date in the URL — and the only source so far whose dates **state
+  no year**. All 18 pages read "6th November" or "Thursday 22nd October",
+  so `dates.parse_range` cannot touch them: it requires a 4-digit year,
+  precisely because inventing one puts an event twelve months out. The
+  year is inferred here, where the page's own purpose justifies it — a
+  what's-on page lists what is coming — as the next occurrence, with a
+  month of grace so a run already under way is not thrown forward a year.
+  Three date shapes, all real: one day; several days sharing a month named
+  once at the end ("5th, 6th, 8th … & 13th December"); and several each
+  naming its own ("22nd October & 29th October"). A day therefore takes
+  the first month named *after* it, the one rule that reads all three —
+  and a month written *before* its days is deliberately not read, since
+  the site never writes one and covering an unseen shape is what
+  `slugdate.py` cost. Times are stripped first or "10am-4pm" contributes a
+  10 and a 4, and only a number with an ordinal suffix counts as a day.
+  Days are then grouped into runs of touching days and **each run is its
+  own event**, the way `ical._merge_runs` joins a fair published a day at
+  a time: the Christmas Market's two weekends are two events, not a
+  nine-day market, so `source_id` is `<slug>-<start>` — the slug alone
+  would have the second overwrite the first on `(source, source_id)`.
+  Three pages state no day at all ("Selected dates throughout December")
+  and are skipped and named in the log rather than guessed at. The index
+  needs its fragments dropped before the path is matched: `/events/#scrolltop`
+  is a back-to-top link that otherwise reads as a nineteenth event,
+  re-fetches the index and is then reported as undated — junk in the one
+  line that says which date shapes went unread. Measured against the live
+  site 5 Sep 2026: 18 pages, 15 dated, 22 events, all at NN6 9EZ.
+  That postcode is the one the site gives "for satnav"; its postal
+  address is NN6 9HD, and this is a tool for driving somewhere.
 - **A code source and a `sources` row must never share a name**: both lists
   run in one pass and the loser overwrites the winner's result.
   `CodeSources` in `backend/store/sources.go` names the code sources so a
@@ -421,12 +453,17 @@ daysout/
 
 ## Gotchas
 
-- **The development environment cannot reach any scraped site** (egress
-  proxy: `CONNECT tunnel failed, 403`). Every fact about a real page in
-  this file came from the deploy workflow's log, and a parser written here
-  without that evidence is a guess — `slugdate.py` is what that costs.
-  When a new site needs reading, add a step to `deploy.yml` that prints
-  what its pages carry, push, and write the parser against the output.
+- **The development environment usually cannot reach a scraped site**
+  (egress proxy: `CONNECT tunnel failed, 403`). Most facts about a real
+  page in this file came from the deploy workflow's log, and a parser
+  written without that evidence is a guess — `slugdate.py` is what that
+  costs. When a new site needs reading, add a step to `deploy.yml` that
+  prints what its pages carry, push, and write the parser against the
+  output. **Check before assuming, in either direction**: on 5 Sep 2026 a
+  sandbox did have egress, and `sources/lamporthall.py` was written and
+  run against the live site from it — one `curl` settled that in a
+  second. The rule that matters is not "the sandbox is offline", it is
+  that a parser must be written against a page somebody actually read.
   Patterns since verified on the house server (30-31 Aug 2026): English
   Heritage 392 places / 116 events, Historic Houses 579 places, National
   Trust challenged, Stonor 5 events, Shuttleworth 24 events, UK Craft
