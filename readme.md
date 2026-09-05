@@ -77,6 +77,7 @@ result is worth knowing before adding more:
 | Historic Houses | **Works** — 579 houses from its own sitemap; places only, no events |
 | Invitation to View, Creative Crafts, The Festival Calendar (art/food/music) | Dropped. Sitemap only, no Event JSON-LD, and nothing after rendering either |
 | Brighton Open Houses | Dropped — an open-houses trail publishes its dates in prose on a festival page, not per house |
+| Blenheim Palace | **Works** — 19 events. Its event pages carry no date at all, so the what's-on listing is the only source; the year is inferred from the end of each range |
 | Stonor Park | **Works** — 6 events. Its Events Calendar API is gone; the site's own `events` route lists the pages and dates none of them, so the dates come from each page's Event JSON-LD |
 | Food festival blog | **Works** — 80 festivals. BlogPosting JSON-LD and no postcode anywhere, so the dates come from its markup and the towns from the place-name gazetteer |
 | UK Craft Fairs | **Works** — its calendar is the index and each fair's own page carries the JSON-LD. No structured data on the listing; malformed HTTP headers, so it can only be rendered |

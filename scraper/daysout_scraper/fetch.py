@@ -3,6 +3,7 @@ User-Agent, and an on-disk cache so re-runs don't hammer the sources."""
 
 import hashlib
 import logging
+import re
 import time
 import urllib.robotparser
 from pathlib import Path
@@ -42,6 +43,37 @@ CHALLENGE_MARKERS = (
     "are you a human",
     "enable javascript and cookies to continue",
 )
+
+
+# <meta charset="utf-8"> or the older http-equiv form, in the head.
+META_CHARSET_RE = re.compile(
+    rb"""<meta[^>]+charset\s*=\s*["']?\s*([a-zA-Z0-9_\-]+)""", re.I)
+
+
+def decoded(response):
+    """The body as text, believing the document over the default.
+
+    `requests` follows RFC 2616 and reads "text/html" with no charset as
+    ISO-8859-1. That default is two decades stale: Blenheim serves UTF-8
+    under a bare "content-type: text/html", so its "Salon Privé" arrived
+    as "Salon PrivÃ©" and would have gone into the database that way — the
+    frontend escapes what it interpolates, so mojibake stored is mojibake
+    a reader sees.
+
+    When the header names a charset it is right and is used. Otherwise the
+    document is asked, as a browser asks it, and UTF-8 is the fallback
+    rather than Latin-1.
+    """
+
+    if "charset" in response.headers.get("content-type", "").lower():
+        return response.text
+
+    match = META_CHARSET_RE.search(response.content[:4096])
+    declared = match.group(1).decode("ascii", "ignore") if match else "utf-8"
+    try:
+        return response.content.decode(declared, errors="replace")
+    except LookupError:  # a charset nobody has heard of
+        return response.content.decode("utf-8", errors="replace")
 
 
 def looks_like_a_challenge(html):
@@ -147,8 +179,9 @@ class Fetcher:
             time.sleep(delay)
 
         response.raise_for_status()
-        cache_file.write_text(response.text, encoding="utf-8")
-        return response.text
+        text = decoded(response)
+        cache_file.write_text(text, encoding="utf-8")
+        return text
 
 
 class FetchDisallowed(Exception):

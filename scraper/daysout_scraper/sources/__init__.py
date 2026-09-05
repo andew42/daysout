@@ -21,10 +21,13 @@ its server's headers are malformed. Food festivals is a blog roundup with
 no postcode anywhere, placed by town through the gazetteer. IACF is one
 iCal feed covering seven showgrounds. RHS is five big shows, each with
 Event JSON-LD on its own page and none on the listing, and Stonor is one
-house whose API lists its events and dates none of them.
+house whose API lists its events and dates none of them. Blenheim is the
+inversion of the usual split: its event pages carry no date at all, so the
+listing is the only thing worth reading.
 See each module's docstring.
 """
 
+from .blenheim import Blenheim
 from .english_heritage import EnglishHeritage
 from .foodfestivals import FoodFestivals
 from .historic_houses import HistoricHouses
@@ -40,7 +43,7 @@ from .wikidata import Wikidata
 
 IMPLEMENTED = [Wikidata, EnglishHeritage, HistoricHouses, Shuttleworth,
                UKCraftFairs, LamportHall, Waddesdon, FoodFestivals, NGS,
-               IACF, RHS, Stonor]
+               IACF, RHS, Stonor, Blenheim]
 
 # Researched, not yet implemented:
 #   airfields.py air show calendars

@@ -26,7 +26,8 @@ daysout/
 │   ├── daysout_scraper/sources/  wikidata, english_heritage,
 │   │                             historic_houses, shuttleworth,
 │   │                             ukcraftfairs, lamporthall, waddesdon,
-│   │                             foodfestivals, ngs, iacf, rhs, stonor
+│   │                             foodfestivals, ngs, iacf, rhs, stonor,
+│   │                             blenheim
 │   └── tests/         fixture-based; python3 -m unittest discover tests
 ├── setup/             One-off data population (postcodes, places, map tiles)
 ├── packaging/         systemd units + timer + install.sh
@@ -336,6 +337,36 @@ daysout/
   with a future open day, 461 openings, 461/461 linked**, every one with a
   postcode and inside the UK. Both seeded NGS rows are gone with the table
   that held them.
+- **Blenheim** (`sources/blenheim.py`) inverts the usual index/detail
+  split: the listing is the only thing worth reading. `discover` on an
+  event page returns the verdict "no dates in the DOM at all" — no
+  JSON-LD, no `<time>`, no date-classed element, not one date-looking
+  phrase — so following the 24 links would spend 24 requests to learn
+  nothing. `/whats-on/` carries each event as a `.portfolio-item` card
+  with the date in a `<small class="date-attr">`.
+  **The `f-2026` class on a card is not the year.** Only 14 of the 24
+  carry an `f-<year>` at all and it disagrees with the date text where
+  both exist: it is a filter tag for the page's own year buttons. It is
+  ignored, and a test pins that with a card whose class and text differ.
+  **The year is inferred from the end of a range, not the start.** Anchor
+  on the start and "Sunday 12th July - Sunday 27th September" — an
+  exhibition running right now — reads as beginning eight weeks ago,
+  past the month of grace, so the next-occurrence rule throws it to next
+  July and inverts the range. The end says whether an event is still on,
+  so the end takes the next occurrence and the start is pulled back to
+  whichever year keeps it before the end — which is also what carries
+  "13th November - 3rd January" over the new year with neither date
+  written with one. Measured live: 19/19 events at OX20 1PP.
+- **Believe the document about its own encoding.** `requests` follows
+  RFC 2616 and reads `text/html` with no charset as ISO-8859-1, which is
+  two decades stale. Blenheim serves UTF-8 under a bare
+  `content-type: text/html`, so "Salon Privé" arrived as "Salon PrivÃ©"
+  and would have been stored that way — and the frontend escapes what it
+  interpolates, so mojibake in the database is mojibake a reader sees.
+  `fetch.decoded` uses the header's charset when it names one, otherwise
+  the document's own `<meta charset>`, otherwise UTF-8. This is not
+  Blenheim's bug; it was every source's, and it happened to surface on
+  the first one with an accent in a title.
 - **Stonor** (`sources/stonor.py`) is where the day-first date lesson came
   from, and it now needs reading a third way. It was a `wpevents` row while
   the site ran The Events Calendar; measured 5 Sep 2026 that route 404s and
