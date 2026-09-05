@@ -52,9 +52,6 @@ CANDIDATES = [
      "auto", "food", "The Festival Calendar: food festivals"),
     ("festival-calendar-music", "https://www.thefestivalcalendar.co.uk/music-festivals.php",
      "auto", "music", "The Festival Calendar: music festivals"),
-    ("food-festivals-uk", "https://rosemaryandporkbelly.co.uk/food-festivals-uk/",
-     "auto", "food", "Food and drink festival listing"),
-
     # Gardens with their own event programmes.
     # The one listing site that does publish Event JSON-LD. Its five events
     # are read correctly but none can be placed yet: they name RHS gardens
@@ -127,7 +124,6 @@ BROWSER = [
     ("festival-calendar-art", "listing built client-side; retry rendered"),
     ("festival-calendar-food", "listing built client-side; retry rendered"),
     ("festival-calendar-music", "listing built client-side; retry rendered"),
-    ("food-festivals-uk", "a blog, but its festival roundups may render dates"),
 ]
 
 # Nothing here yet: every candidate is worth one rendered attempt before
@@ -165,6 +161,9 @@ SUPERSEDED = [
     ("uk-craft-fairs",
      "now read by the built-in parser: the calendar for discovery, each "
      "fair's own page for its JSON-LD and postcode"),
+    ("food-festivals-uk",
+     "now read by the built-in parser: the roundup's own markup for dates, "
+     "and the places gazetteer for towns it never gives a postcode for"),
 ]
 
 

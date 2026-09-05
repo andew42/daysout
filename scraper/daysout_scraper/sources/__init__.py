@@ -19,6 +19,7 @@ See each module's docstring.
 """
 
 from .english_heritage import EnglishHeritage
+from .foodfestivals import FoodFestivals
 from .historic_houses import HistoricHouses
 from .lamporthall import LamportHall
 from .national_trust import NationalTrust
@@ -28,7 +29,8 @@ from .waddesdon import Waddesdon
 from .wikidata import Wikidata
 
 IMPLEMENTED = [Wikidata, EnglishHeritage, NationalTrust, HistoricHouses,
-               Shuttleworth, UKCraftFairs, LamportHall, Waddesdon]
+               Shuttleworth, UKCraftFairs, LamportHall, Waddesdon,
+               FoodFestivals]
 
 # Researched, not yet implemented:
 #   ngs.py       National Garden Scheme open days (garden events)

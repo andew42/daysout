@@ -180,7 +180,8 @@ def purge_seed(db):
         db.execute("DELETE FROM events WHERE source = 'seed'")
 
 
-def ensure_venue(db, source, name, postcode, category="venue", url=""):
+def ensure_venue(db, source, name, postcode, category="venue", url="",
+                 places=()):
     """Make sure a destination exists for an event's venue, creating it from
     the venue postcode when we have never seen the place before.
 
@@ -223,9 +224,16 @@ def ensure_venue(db, source, name, postcode, category="venue", url=""):
         # kilometres. Said out loud, because a venue placed this way is
         # less precise than one placed by postcode and the run log is
         # where that difference has to be visible.
-        coordinates = geocode_place(db, name)
-        if coordinates:
-            log.info("placed %r by town, not postcode", name)
+        # The venue's own name first, then whatever towns the source
+        # offered. A listing headed "Foodies Festival, Bath, Somerset"
+        # cannot know which of its parts is the town, so it hands over
+        # the candidates in order and the first one the gazetteer holds
+        # wins — a county is simply never in there to be picked.
+        for candidate in (name, *places):
+            coordinates = geocode_place(db, candidate)
+            if coordinates:
+                log.info("placed %r by town %r, not postcode", name, candidate)
+                break
     if not coordinates:
         return None
 

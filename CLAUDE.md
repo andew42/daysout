@@ -25,7 +25,8 @@ daysout/
 │   ├── daysout_scraper/          pipeline, polite fetcher, JSON-LD engine
 │   ├── daysout_scraper/sources/  national_trust, english_heritage,
 │   │                             historic_houses, shuttleworth,
-│   │                             ukcraftfairs, lamporthall, waddesdon
+│   │                             ukcraftfairs, lamporthall, waddesdon,
+│   │                             foodfestivals
 │   └── tests/         fixture-based; python3 -m unittest discover tests
 ├── setup/             One-off data population (postcodes, places, map tiles)
 ├── packaging/         systemd units + timer + install.sh
@@ -240,6 +241,33 @@ daysout/
   clamped: `isOngoing` already files anything over `OngoingDays` as a
   standing programme and sorts it below the special events. Measured
   5 Sep 2026: 46 published, 22 over, 24 current, all at HP18 0JH.
+- **Food festivals** (`sources/foodfestivals.py`) is the source the
+  gazetteer was built for, and the one that shows what "wrong kind" costs.
+  It was seeded `kind='browser'` on the guess that a blog's roundups "may
+  render dates", and that was wrong twice over: the page is a
+  `BlogPosting` with no Event JSON-LD for a structured-data kind to find,
+  and its dates were in the served HTML all along, so rendering was never
+  the missing piece. One plain request gets all of it. **Check what a page
+  is actually missing before deciding how to read it.** The markup is an
+  `<h4>` per month and an `<h3>` per festival whose link leaves for the
+  festival's own site, with the date opening the `<p>` after it — and
+  those dates carry their year, so `parse_range` reads 124 of 134 as they
+  stand, no inference of the Lamport Hall kind. What stopped it working
+  was that there is **not one postcode on the page**, and all 134 links
+  are third-party, so the UK Craft Fairs answer (listing as index, item's
+  own page for the address) would mean crawling 134 unrelated domains.
+  Place names are therefore offered to the pipeline as *candidates* in
+  order rather than resolved in the source, which cannot see the database:
+  "Foodies Festival, Bath, Somerset" hides its town in the middle and
+  "Ludlow Food Festival, Shropshire" hides it in the festival's own name,
+  and only the gazetteer can tell a town from a county — which it does by
+  holding no counties at all. `ensure_venue` takes the first candidate it
+  holds. The event's title stays the venue label, as RHS shows are
+  labelled: what we know is the festival and roughly where, not the field
+  it is in. Measured 5 Sep 2026 against the live page with the real
+  gazetteer: 124 dated, **80 linked at 68 venues**, up from nothing, and
+  six spot-checks land within 1.4 km of the right town. The rest name a
+  country house or only a county and are dropped and named in the log.
 - **A code source and a `sources` row must never share a name**: both lists
   run in one pass and the loser overwrites the winner's result.
   `CodeSources` in `backend/store/sources.go` names the code sources so a
