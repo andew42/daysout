@@ -45,7 +45,23 @@ jobs:
             | python3 -c "
           import json, sys
           body = json.load(sys.stdin)
-          print('sources listed:', len(body['sources']), '| kinds:', ','.join(body['kinds']))"
+          names = [s['name'] for s in body['sources']]
+          assert names, 'the Sources tab lists nothing'
+          assert 'english_heritage' in names, names
+          print('sources listed:', len(names), '|', ', '.join(names[:5]))"
+          # Sources can no longer be added from the browser: they are
+          # written in code. Assert the refusal rather than trusting the
+          # handler, because an unknown API path falls through to the SPA
+          # and answers 200 with HTML — a removal that quietly did nothing
+          # would look identical from here.
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+            -X POST -H 'Content-Type: application/json' \
+            -d '{"url":"https://example.org/"}' \
+            http://localhost:8080/api/sources)
+          echo "add a source: $CODE"
+          python3 -c "
+          assert '$CODE' == '405', 'expected 405, got $CODE'
+          print('OK: /api/sources refuses anything but GET')"
           # The Update button runs the scraper for one source. Check the
           # route answers and refuses an unknown name; updating a real
           # source here would just duplicate the scrape step below.
