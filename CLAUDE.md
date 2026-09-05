@@ -68,7 +68,15 @@ daysout/
   the table, the hamlet of Brighton in Cornwall was the only one of that
   name, looked perfectly unambiguous, and took every Brighton event 230 km
   west. An absent place does not merely fail to match; it lets a smaller
-  namesake answer for it. The population is fetched with `MAX` and
+  namesake answer for it. **The import re-runs when its own rules change**, not once per lifetime:
+  `--if-stale` hashes `import_places.py` and compares that with a
+  fingerprint recorded in `places_meta`, so the deploy runs it every time
+  and it refetches only when the rules differ. A "first deploy only" guard
+  is what left the Bath-less table in place — the rules here change more
+  often than the data does, and a table built by old ones looks perfectly
+  healthy from outside. A version recorded over an empty table counts as
+  stale, since that is what a half-finished import leaves.
+  The population is fetched with `MAX` and
   `GROUP BY`, not a bare `OPTIONAL`: a town with a figure per census comes
   back once per figure, which pushed the village response past the size
   the endpoint returns intact — it arrived truncated mid-JSON and the type

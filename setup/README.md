@@ -45,6 +45,18 @@ UK, and an event at the wrong one is worse than one the map never shows,
 so a name shared by two genuinely different places is dropped rather than
 guessed at (~1,900 of them).
 
+Re-run it whenever the rules change — the deploy does this for you:
+
+```bash
+python3 import_places.py --db /var/lib/daysout/daysout.db --if-stale
+```
+
+That imports only when the table was built by different rules from the
+ones in the script now, so it is safe to run on every deploy. The rules
+change more often than the data does, and a table built by the old ones
+looks perfectly healthy from outside: the version that had no Bath in it
+gave no sign beyond events quietly failing to be placed.
+
 Check the rules without touching the network:
 
 ```bash

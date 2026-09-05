@@ -11,7 +11,14 @@ source and the same licence the scraper already uses for destinations, so
 this adds no new dependency and nothing to agree to. Stdlib only.
 
     python3 import_places.py [--db PATH]
+    python3 import_places.py --db PATH --if-stale
     python3 import_places.py --self-test
+
+`--if-stale` imports only when the table was built by different rules from
+these, so a deploy can run it every time without refetching. The rules
+change more often than the data does, and a table built by the old ones
+looks perfectly healthy from outside — the version that lacked Bath gave
+no sign beyond events quietly failing to be placed.
 
 **Only unambiguous names are stored.** There are twenty Middletons and
 seventeen Newtons in the UK, and a festival at the wrong one is worse than
@@ -34,6 +41,7 @@ rows at once. Measured 5 Sep 2026.
 """
 
 import argparse
+import hashlib
 import json
 import math
 import re
@@ -213,17 +221,58 @@ def build(places):
     return sorted(rows), dropped
 
 
+def rules_version():
+    """A fingerprint of this file, identifying the rules that built a table.
+
+    The rules change more often than the data does — the settlement types
+    to fetch, what counts as ambiguous, how the key is normalised — and a
+    table built by the old ones looks perfectly healthy from outside. It
+    was: the gazetteer had no Bath in it, and the only sign was events
+    quietly failing to be placed.
+
+    Hashing the file rather than a version constant somebody has to
+    remember to bump. A comment-only edit then costs one needless import,
+    which is a minute; a forgotten bump costs a wrong map until the next
+    person notices.
+    """
+    return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:16]
+
+
+def stored_version(db_path):
+    """The rules that built the table in this database, or '' if none."""
+    if not Path(db_path).exists():
+        return ""
+    db = sqlite3.connect(db_path)
+    try:
+        row = db.execute(
+            "SELECT value FROM places_meta WHERE key = 'rules_version'").fetchone()
+        count = db.execute("SELECT COUNT(*) FROM places").fetchone()[0]
+    except sqlite3.OperationalError:  # neither table exists yet
+        return ""
+    finally:
+        db.close()
+    # An empty table is not up to date whatever it claims.
+    return row[0] if row and count else ""
+
+
 def write(db_path, rows):
     db = sqlite3.connect(db_path)
     try:
         db.execute("CREATE TABLE IF NOT EXISTS places ("
                    "name TEXT PRIMARY KEY, lat REAL NOT NULL, lon REAL NOT NULL)")
+        db.execute("CREATE TABLE IF NOT EXISTS places_meta ("
+                   "key TEXT PRIMARY KEY, value TEXT NOT NULL)")
         # Replace wholesale: the gazetteer is reference data, and a name
         # Wikidata has stopped calling a settlement should stop being one
         # here too.
         db.execute("DELETE FROM places")
         db.executemany("INSERT OR REPLACE INTO places (name, lat, lon)"
                        " VALUES (?, ?, ?)", rows)
+        # Written last and in the same transaction as the rows: a version
+        # recorded against a half-written table would make the next run
+        # skip a gazetteer that is not there.
+        db.execute("INSERT OR REPLACE INTO places_meta (key, value)"
+                   " VALUES ('rules_version', ?)", (rules_version(),))
         db.commit()
     finally:
         db.close()
@@ -275,6 +324,31 @@ def self_test():
     assert rows == [("brighton", 50.82, -0.14), ("ludlow", 52.368, -2.717)], rows
     assert dropped == 1
 
+    # --if-stale: an import is skipped only when the same rules built the
+    # table and the table is not empty.
+    import tempfile
+    with tempfile.TemporaryDirectory() as directory:
+        path = str(Path(directory) / "t.db")
+        assert stored_version(path) == "", "a database that does not exist"
+
+        write(path, [("ludlow", 52.368, -2.717)])
+        assert stored_version(path) == rules_version(), "just written"
+
+        db = sqlite3.connect(path)
+        db.execute("UPDATE places_meta SET value = 'older-rules'")
+        db.commit()
+        db.close()
+        assert stored_version(path) != rules_version(), "built by other rules"
+
+        db = sqlite3.connect(path)
+        db.execute("UPDATE places_meta SET value = ?", (rules_version(),))
+        db.execute("DELETE FROM places")
+        db.commit()
+        db.close()
+        # The right rules over an empty table is not up to date: that is
+        # what a half-finished import leaves behind.
+        assert stored_version(path) == "", "empty table"
+
     print("self-test passed")
 
 
@@ -284,10 +358,19 @@ def main():
                         help="database to fill (default: data/daysout.db)")
     parser.add_argument("--self-test", action="store_true",
                         help="check the rules and exit, no network")
+    parser.add_argument("--if-stale", action="store_true",
+                        help="import only when the table was built by "
+                             "different rules from these, so a deploy can "
+                             "run this every time without refetching")
     args = parser.parse_args()
 
     if args.self_test:
         self_test()
+        return 0
+
+    if args.if_stale and stored_version(args.db) == rules_version():
+        print(f"{args.db} already holds a gazetteer built by these rules "
+              f"({rules_version()}); nothing to do")
         return 0
 
     places = {}

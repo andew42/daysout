@@ -54,6 +54,15 @@ CREATE TABLE IF NOT EXISTS places (
     lon  REAL NOT NULL
 );
 
+-- Which rules built the table above: a fingerprint of import_places.py,
+-- so a deploy can re-import when they change and skip when they have not.
+-- Nothing here reads it; the importer owns it, and it is declared so this
+-- schema describes the whole file.
+CREATE TABLE IF NOT EXISTS places_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 -- There were sources and removed_sources tables here, holding listing
 -- sites as rows so a new one was an INSERT rather than a release, and a
 -- record of the ones removed through the UI so a removal did not undo
