@@ -36,6 +36,7 @@ from .iacf import IACF
 from .lamporthall import LamportHall
 from .ngs import NGS
 from .rhs import RHS
+from .rockingham import Rockingham
 from .shuttleworth import Shuttleworth
 from .stonor import Stonor
 from .turvey import Turvey
@@ -45,7 +46,8 @@ from .wikidata import Wikidata
 
 IMPLEMENTED = [Wikidata, EnglishHeritage, HistoricHouses, Shuttleworth,
                UKCraftFairs, LamportHall, Waddesdon, FoodFestivals, NGS,
-               IACF, RHS, Stonor, Blenheim, Chenies, Turvey]
+               IACF, RHS, Stonor, Blenheim, Chenies, Turvey,
+               Rockingham]
 
 # Researched, not yet implemented:
 #   airfields.py air show calendars

@@ -27,7 +27,8 @@ daysout/
 │   │                             historic_houses, shuttleworth,
 │   │                             ukcraftfairs, lamporthall, waddesdon,
 │   │                             foodfestivals, ngs, iacf, rhs, stonor,
-│   │                             blenheim, chenies, turvey
+│   │                             blenheim, chenies, turvey,
+│   │                             rockingham
 │   └── tests/         fixture-based; python3 -m unittest discover tests
 ├── setup/             One-off data population (postcodes, places, map tiles)
 ├── packaging/         systemd units + timer + install.sh
@@ -371,6 +372,27 @@ daysout/
   "cancel" is skipped, and a date is required, which keeps the list out.
   One block gives dates and no title — the name is in an image — so a
   title is required too. Measured live: 1 event still to come.
+- **Rockingham Castle** (`sources/rockingham.py`) has three cards and
+  three ways of writing when, and reading any as another puts a visitor at
+  a shut castle. Its WordPress `event` route answers `meta: null` and an
+  empty `acf` — the API knows the events and none of their dates, like
+  Stonor's and Chenies' — so the `.post` cards under `#events-category`
+  are the source.
+  "Saturday 26th & Sunday 27th September" is two days that happen to
+  touch, so one two-day event. "Tuesdays ~ 6th, 13th & 20th October" is
+  three separate Tuesdays a fortnight apart — **not** a range, the castle
+  being shut on the 7th. "Wednesday 28th - Saturday 31st October" is a
+  genuine four-day run. So **a dash includes the days between it and a
+  comma or ampersand does not**, and only then are touching days joined
+  into runs — expanding the dash first lets "28th - 31st" become one event
+  by the same rule that joins "26th & 27th".
+  The separator test is that the gap *contains* a dash, not that it is
+  one: a weekday sits inside it ("28th - Saturday 31st October"), and
+  requiring a bare dash made Halloween week read as two single days.
+  Times are stripped first, because "10am - 2pm" is a dash between two
+  numbers. A card can therefore be several events, so `source_id` carries
+  the start date or the three Tuesdays would overwrite each other.
+  Measured live 6 Sep 2026: 3 cards, 5 events at LE16 8TH.
 - **Chenies Manor** (`sources/chenies.py`) is the tidiest listing here and
   still hides a trap. Each event is a `.ce-card` carrying its title, link,
   excerpt and `.ce-card__dates` — "3 May 2027 – 31 May 2027", **both ends

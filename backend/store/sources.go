@@ -41,6 +41,7 @@ var CodeSources = []string{
 	"uk-craft-fairs", "lamport-hall", "waddesdon", "food-festivals-uk",
 	"ngs-open-gardens", "iacf", "rhs-events", "stonor-whats-on",
 	"blenheim-palace", "chenies-manor", "turvey-house",
+	"rockingham-castle",
 }
 
 // Sources returns every source with what it is contributing, for the UI.
