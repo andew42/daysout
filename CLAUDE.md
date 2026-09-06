@@ -27,7 +27,7 @@ daysout/
 │   │                             historic_houses, shuttleworth,
 │   │                             ukcraftfairs, lamporthall, waddesdon,
 │   │                             foodfestivals, ngs, iacf, rhs, stonor,
-│   │                             blenheim, chenies
+│   │                             blenheim, chenies, turvey
 │   └── tests/         fixture-based; python3 -m unittest discover tests
 ├── setup/             One-off data population (postcodes, places, map tiles)
 ├── packaging/         systemd units + timer + install.sh
@@ -348,6 +348,29 @@ daysout/
   with a future open day, 461 openings, 461/461 linked**, every one with a
   postcode and inside the UK. Both seeded NGS rows are gone with the table
   that held them.
+- **Turvey House** (`sources/turvey.py`) is a hand-typed Wix page, and the
+  reason its date rule is the *opposite* of Blenheim's. Half a megabyte of
+  markup holds about 1,500 characters of content; each event is one
+  `[data-testid="richTextElement"]` with a title, a date and a booking
+  link on separate lines.
+  **A year left off is read as this year and dropped once past, never
+  rolled forward.** Measured 6 Sep 2026, this page still advertised
+  "Sunday 2nd August" and three other August dates a month after they
+  happened, where Blenheim's had already taken its August entries down.
+  Rolling an undated year forward on a page that does not clear itself
+  does not recover a future event, it invents one: "Outdoor Theatre:
+  Kaspar Prince of Cats, 2 August 2027" is a show nobody has scheduled.
+  The cost is a genuine event written without its year, and that is the
+  trade made everywhere else here. **The rule belongs to the page, not to
+  the parser** — ask whether a listing clears itself before deciding what
+  a missing year means.
+  Two things on it must not become events and both would if a parser only
+  hunted dates: a **cancellation notice** that reads "CANCELLED. We regret
+  to inform…" and ends with the dates being cancelled, and a **"Previous
+  Events Include:"** list of eight past event types. A block saying
+  "cancel" is skipped, and a date is required, which keeps the list out.
+  One block gives dates and no title — the name is in an image — so a
+  title is required too. Measured live: 1 event still to come.
 - **Chenies Manor** (`sources/chenies.py`) is the tidiest listing here and
   still hides a trap. Each event is a `.ce-card` carrying its title, link,
   excerpt and `.ce-card__dates` — "3 May 2027 – 31 May 2027", **both ends

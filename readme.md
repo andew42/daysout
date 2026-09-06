@@ -77,6 +77,7 @@ result is worth knowing before adding more:
 | Historic Houses | **Works** — 579 houses from its own sitemap; places only, no events |
 | Invitation to View, Creative Crafts, The Festival Calendar (art/food/music) | Dropped. Sitemap only, no Event JSON-LD, and nothing after rendering either |
 | Brighton Open Houses | Dropped — an open-houses trail publishes its dates in prose on a festival page, not per house |
+| Turvey House | **Works** — hand-typed Wix rich text, no structured data. A date with no year is read as this year and dropped once past, because the page does not clear its old entries |
 | Chenies Manor House | **Works** — 4 events. Its listing carries title, link and both dates per card; its WordPress API knows the events and none of their dates |
 | Blenheim Palace | **Works** — 19 events. Its event pages carry no date at all, so the what's-on listing is the only source; the year is inferred from the end of each range |
 | Stonor Park | **Works** — 6 events. Its Events Calendar API is gone; the site's own `events` route lists the pages and dates none of them, so the dates come from each page's Event JSON-LD |
