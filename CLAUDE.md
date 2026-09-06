@@ -27,7 +27,7 @@ daysout/
 │   │                             historic_houses, shuttleworth,
 │   │                             ukcraftfairs, lamporthall, waddesdon,
 │   │                             foodfestivals, ngs, iacf, rhs, stonor,
-│   │                             blenheim
+│   │                             blenheim, chenies
 │   └── tests/         fixture-based; python3 -m unittest discover tests
 ├── setup/             One-off data population (postcodes, places, map tiles)
 ├── packaging/         systemd units + timer + install.sh
@@ -337,6 +337,24 @@ daysout/
   with a future open day, 461 openings, 461/461 linked**, every one with a
   postcode and inside the UK. Both seeded NGS rows are gone with the table
   that held them.
+- **Chenies Manor** (`sources/chenies.py`) is the tidiest listing here and
+  still hides a trap. Each event is a `.ce-card` carrying its title, link,
+  excerpt and `.ce-card__dates` — "3 May 2027 – 31 May 2027", **both ends
+  with their year**, so nothing is inferred, unlike Lamport (no years) or
+  Blenheim (some). Its WordPress `event` post type exists but
+  `/wp-json/wp/v2/event` answers with no `meta` and an empty `acf`: the
+  API knows the events and none of their dates, as Stonor's does, so the
+  listing is the whole source and costs one request.
+  **`dates.parse_range` misreads that date shape and says nothing.** Given
+  "3 May 2027 – 31 May 2027" it returns `('2027-05-03', '2027-05-03')` —
+  its pattern is built for "5 - 6 December 2026", where the year is
+  written once at the end, so it matches the first complete date and
+  stops. A month-long festival would have become a one-day event with
+  nothing looking wrong. `chenies.date_range` splits on the dash and reads
+  each side, falling back to `parse_range` over the whole string for the
+  year-written-once shape. A test asserts the truncation directly, so if
+  `parse_range` ever learns the shape, it says so rather than going quiet.
+  Measured live 6 Sep 2026: 4 cards, 4 dated, 4/4 linked at WD3 6ER.
 - **Blenheim** (`sources/blenheim.py`) inverts the usual index/detail
   split: the listing is the only thing worth reading. `discover` on an
   event page returns the verdict "no dates in the DOM at all" — no

@@ -40,7 +40,7 @@ var CodeSources = []string{
 	"wikidata", "english_heritage", "historic-houses", "shuttleworth-events",
 	"uk-craft-fairs", "lamport-hall", "waddesdon", "food-festivals-uk",
 	"ngs-open-gardens", "iacf", "rhs-events", "stonor-whats-on",
-	"blenheim-palace",
+	"blenheim-palace", "chenies-manor",
 }
 
 // Sources returns every source with what it is contributing, for the UI.

@@ -28,6 +28,7 @@ See each module's docstring.
 """
 
 from .blenheim import Blenheim
+from .chenies import Chenies
 from .english_heritage import EnglishHeritage
 from .foodfestivals import FoodFestivals
 from .historic_houses import HistoricHouses
@@ -43,7 +44,7 @@ from .wikidata import Wikidata
 
 IMPLEMENTED = [Wikidata, EnglishHeritage, HistoricHouses, Shuttleworth,
                UKCraftFairs, LamportHall, Waddesdon, FoodFestivals, NGS,
-               IACF, RHS, Stonor, Blenheim]
+               IACF, RHS, Stonor, Blenheim, Chenies]
 
 # Researched, not yet implemented:
 #   airfields.py air show calendars
