@@ -72,7 +72,7 @@ result is worth knowing before adding more:
 | English Heritage | **Works** — 392 properties, ~119 events, Event JSON-LD per page |
 | National Trust | Source removed. robots.txt permits `/visit/**`; the site answers with a 118 KB bot-protection challenge. Its properties still come from Wikidata — see above |
 | RHS | **Works** — five flower shows, each with Event JSON-LD on its own page. The listing page has none, which is why a source aimed at the site root found nothing |
-| NGS open gardens | **Works** — 214 gardens, 461 open days, from the find-a-garden JSON API. The "open this week" page is a hub of regional links, which is why rendering it found nothing |
+| NGS open gardens | **Works** — 204 gardens, 252 openings, from the find-a-garden JSON API. The feed lists one record per day, so touching days are joined into one opening. The "open this week" page is a hub of regional links, which is why rendering it found nothing |
 | IACF antiques fairs | **Works** — 28 fairs across seven showgrounds, from the combined iCal feed its calendar page offers |
 | Historic Houses | **Works** — 579 houses from its own sitemap; places only, no events |
 | Invitation to View, Creative Crafts, The Festival Calendar (art/food/music) | Dropped. Sitemap only, no Event JSON-LD, and nothing after rendering either |

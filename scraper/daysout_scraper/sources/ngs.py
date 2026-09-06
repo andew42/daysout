@@ -51,7 +51,7 @@ through `link_event` rather than by matching names.
 import json
 import logging
 import re
-from datetime import date
+from datetime import date, timedelta
 
 from .. import dates
 
@@ -86,8 +86,8 @@ class NGS:
         skipped = Skipped()
         published = openings = 0
         for garden in gardens:
-            days = open_days(garden, self.today, skipped)
-            if not days:
+            runs = open_days(garden, self.today, skipped)
+            if not runs:
                 continue
             place = parse_place(garden)
             if not place:
@@ -95,9 +95,10 @@ class NGS:
 
             yield "place", place
             published += 1
-            for start in days:
+            for start, end in runs:
                 openings += 1
-                yield "event", parse_event(garden, place, start, self.category)
+                yield "event", parse_event(garden, place, start, end,
+                                           self.category)
 
         log.info("%s: %d garden(s) listed, %d with a future open day, "
                  "%d opening(s)", self.name, len(gardens), published, openings)
@@ -143,7 +144,34 @@ def open_days(garden, today, skipped=None):
             skipped.past += 1
             continue
         days.append(start)
-    return sorted(set(days))
+    return open_runs(sorted(set(days)))
+
+
+def open_runs(days):
+    """Days that touch, joined into (start, end) runs.
+
+    The feed says nothing about a run: it lists one record per day, so a
+    garden open every day from September to Christmas arrives as a hundred
+    and eight of them. Stored one to an event that is a hundred and eight
+    rows for one garden — a quarter of everything this source produced —
+    and the events list showed the same open day again for every day of a
+    reader's window.
+
+    A run of touching days is one opening, the way `ical._merge_runs`
+    joins a fair published a day at a time and `lamporthall` joins the
+    days of a workshop. Days that do not touch stay apart, because a
+    garden open on Saturday and Monday is shut on Sunday and a range
+    would say otherwise.
+    """
+
+    runs = []
+    for day in days:
+        moment = date.fromisoformat(day)
+        if runs and moment - date.fromisoformat(runs[-1][1]) == timedelta(days=1):
+            runs[-1][1] = day
+        else:
+            runs.append([day, day])
+    return [(start, end) for start, end in runs]
 
 
 def parse_place(garden):
@@ -170,18 +198,23 @@ def parse_place(garden):
     }
 
 
-def parse_event(garden, place, start, category):
-    """One open day at one garden."""
+def parse_event(garden, place, start, end, category):
+    """One run of open days at one garden."""
 
     return {
+        # The run's first day: a garden's runs cannot overlap, so this is
+        # unique per garden and stays put when a run is extended.
         "source_id": f"{garden.get('id')}-{start}",
         # The garden's name alone would repeat its venue's, so say what
-        # the event is: the garden is open that day.
-        "title": f"{place['name']} open day"[:160],
+        # the event is. "Open day" is only true of a day: Robinson College
+        # is open every day to Christmas, and calling that an open day
+        # would read as one afternoon somewhere in it.
+        "title": (f"{place['name']} open day" if start == end
+                  else f"{place['name']} open daily")[:160],
         "description": place["description"],
         "url": place["url"],
         "start_date": start,
-        "end_date": start,
+        "end_date": end,
         "category": category,
         # Linked by the garden's own id, not by name: two gardens can
         # share a name and the feed's id is unambiguous.

@@ -330,7 +330,18 @@ daysout/
   feed, so they are skipped explicitly, as are past ones — and a garden
   with no future day is not published as a place at all, since an NGS
   garden is somebody's private garden and a pin for one that never opens
-  is a pin for somewhere you cannot go. Events link to their garden **by
+  is a pin for somewhere you cannot go.
+  **Touching days are joined into one opening** (`open_runs`), the way
+  `ical._merge_runs` joins a fair published a day at a time. The feed
+  never says a run is a run: Robinson College is open every day from
+  September to Christmas and arrives as 108 separate records, which
+  became 108 events — a quarter of everything this source produced, and
+  the same open day repeated for every day of a reader's window. Joined,
+  it is one event from 6 September to 22 December and the source falls
+  from 429 events to 252. Days that do *not* touch stay apart, because a
+  garden open Saturday and Monday is shut on Sunday and a range would
+  say otherwise. A run is titled "open daily" rather than "open day",
+  which is only true of a day. Events link to their garden **by
   the feed's id** through `link_event`, not by name: two gardens really
   are called The Old Vicarage, and name-matching would put one's open day
   two hundred miles away. Measured 5 Sep 2026: 624 gardens listed, **214

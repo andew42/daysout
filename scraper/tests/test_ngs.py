@@ -13,7 +13,8 @@ import sqlite3
 import unittest
 
 from daysout_scraper.pipeline import run_source
-from daysout_scraper.sources.ngs import NGS, open_days, parse_place
+from daysout_scraper.sources.ngs import (
+    NGS, open_days, open_runs, parse_place)
 
 from schema import SCHEMA
 
@@ -77,7 +78,8 @@ class FakeFetcher:
 class TestWhichOpeningsCount(unittest.TestCase):
 
     def test_only_a_future_uncancelled_day_is_an_open_day(self):
-        self.assertEqual(open_days(HOLE_PARK, TODAY), ["2026-10-04"])
+        self.assertEqual(open_days(HOLE_PARK, TODAY),
+                         [("2026-10-04", "2026-10-04")])
 
     def test_a_window_is_not_a_day(self):
         # 1 January to 31 December is "ring the owner", not "turn up".
@@ -87,15 +89,58 @@ class TestWhichOpeningsCount(unittest.TestCase):
 
     def test_a_day_that_starts_today_still_counts(self):
         today = garden(1, "G", [opening(TODAY)])
-        self.assertEqual(open_days(today, TODAY), [TODAY])
+        self.assertEqual(open_days(today, TODAY), [(TODAY, TODAY)])
 
     def test_days_come_back_sorted_and_deduplicated(self):
         many = garden(1, "G", [opening("2026-11-02"), opening("2026-09-20"),
                                opening("2026-09-20")])
-        self.assertEqual(open_days(many, TODAY), ["2026-09-20", "2026-11-02"])
+        self.assertEqual(open_days(many, TODAY),
+                         [("2026-09-20", "2026-09-20"),
+                          ("2026-11-02", "2026-11-02")])
 
     def test_a_garden_with_nothing_to_come_has_no_days(self):
         self.assertEqual(open_days(SHUT, TODAY), [])
+
+
+class TestJoiningTheDaysOfOneOpening(unittest.TestCase):
+    """The feed lists one record per day and never says they are a run.
+
+    Robinson College is open every day from September to Christmas, which
+    arrives as 108 records and became 108 events — a quarter of everything
+    this source produced, and the same open day again for every day of a
+    reader's window.
+    """
+
+    def test_touching_days_are_one_opening(self):
+        self.assertEqual(
+            open_runs(["2026-09-05", "2026-09-06", "2026-09-07"]),
+            [("2026-09-05", "2026-09-07")])
+
+    def test_days_that_do_not_touch_stay_apart(self):
+        # Open Saturday and Monday is shut on Sunday, and a range would
+        # say otherwise.
+        self.assertEqual(
+            open_runs(["2026-09-05", "2026-09-07"]),
+            [("2026-09-05", "2026-09-05"), ("2026-09-07", "2026-09-07")])
+
+    def test_a_weekend_is_one_opening_and_the_next_is_another(self):
+        self.assertEqual(
+            open_runs(["2026-09-05", "2026-09-06",
+                       "2026-09-12", "2026-09-13"]),
+            [("2026-09-05", "2026-09-06"), ("2026-09-12", "2026-09-13")])
+
+    def test_a_garden_open_every_day_is_one_opening(self):
+        every_day = [f"2026-09-{day:02d}" for day in range(6, 31)]
+        self.assertEqual(open_runs(every_day),
+                         [("2026-09-06", "2026-09-30")])
+
+    def test_a_run_across_a_month_boundary(self):
+        self.assertEqual(
+            open_runs(["2026-09-29", "2026-09-30", "2026-10-01"]),
+            [("2026-09-29", "2026-10-01")])
+
+    def test_nothing_at_all(self):
+        self.assertEqual(open_runs([]), [])
 
 
 class TestTheGardenAsAPlace(unittest.TestCase):
@@ -180,6 +225,20 @@ class TestTheRun(unittest.TestCase):
             self.db.execute("SELECT title FROM events WHERE start_date ="
                             " '2026-10-04'").fetchone()[0],
             "Hole Park open day")
+
+    def test_a_run_of_days_is_not_called_an_open_day(self):
+        # "Open day" is only true of a day. A garden open to Christmas
+        # would read as one afternoon somewhere in it.
+        db = sqlite3.connect(":memory:")
+        db.executescript(SCHEMA)
+        feed = {"total": 1, "stats": {}, "results": [garden(
+            500, "Robinson College",
+            [opening(f"2026-09-{day:02d}") for day in range(20, 26)],
+            lat=52.20, lng=0.11, postcode="CB3 9AN")]}
+        run_source(db, FakeFetcher(json.dumps(feed)), NGS(TODAY))
+        self.assertEqual(
+            db.execute("SELECT title, start_date, end_date FROM events").fetchall(),
+            [("Robinson College open daily", "2026-09-20", "2026-09-25")])
 
 
 if __name__ == "__main__":
