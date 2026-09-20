@@ -145,6 +145,42 @@ daysout/
   it, no rotating identities. The point of detecting one is to stop and
   say so rather than collect hundreds of refusals and report an empty
   site.
+- **The Landmark Trust is a Wikidata query, because its own site refuses
+  us and the question Wikidata answers is a different one.** Measured
+  20 Sep 2026 from the sandbox, which had egress that day (Chenies
+  answered 200 in the same minute, so this is the site and not the
+  proxy): `www.landmarktrust.org.uk` returns **403 with `cf-mitigated:
+  challenge`** and a Cloudflare "Just a moment…" interstitial on `/`,
+  `/whats-on/`, `/sitemap.xml` and every `wp-json` route — 5.4-5.7 KB
+  each, `fetch.looks_like_a_challenge` true on all of them — while
+  `robots.txt` answers 200, disallows none of those paths and advertises
+  the sitemap it will not then serve. So the site says yes in robots.txt
+  and no at the door, which is the National Trust case again: no events
+  source is written, nothing renders past it, and the refusal is recorded
+  here so the next person does not spend the afternoon rediscovering it.
+  The properties do not need the site. They come from Wikidata like the
+  National Trust's, with one difference that matters: **these buildings
+  are linked by ownership, not operator.** `wdt:P137` finds 4 of them and
+  `wdt:P127` finds 25, so asking the National Trust's question would have
+  returned four buildings and looked like a working query — the failure
+  `QUERIES` is built to make visible by logging a row count, arriving as
+  a plausible number rather than a zero. The union of the two is **29
+  with coordinates**, all filed `historic-house`, 27 on the UK mainland
+  and 2 in the Channel Islands (Fort Clonque on Alderney, Nicolle Tower
+  on Jersey) which are correct, not stray. Only **1 of the 29 carries a
+  postcode**, which costs nothing: a Wikidata place is placed by its own
+  `P625` coordinates and never geocoded, and 9 carry their own website
+  with the rest falling back to the Wikidata item.
+  **What this source does not know is when you can go in.** A Landmark
+  Trust building is holiday accommodation, let by the week, and its open
+  days are published only on the site that challenges us — so these are
+  pins for buildings that are usually somebody's holiday let, unlike an
+  NT property where turning up is the point. That is a weaker claim than
+  the NGS rule allows itself, where a garden with no future open day is
+  not published at all, and it is made deliberately: most of these are
+  towers, forts and follies that are landmarks in public places, and the
+  alternative is to hold nothing. If the site ever stops challenging,
+  the open days are the thing worth going back for.
 - **Bounded runs never purge**: `--max-pages` runs (verification deploys)
   set `partial` and skip `purge_stale`, because a run that only looked at
   part of a source knows nothing about the rest.

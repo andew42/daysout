@@ -3,6 +3,7 @@
 import json
 import sqlite3
 import unittest
+from urllib.parse import unquote
 
 from daysout_scraper.pipeline import run_source
 from daysout_scraper.sources.wikidata import Wikidata
@@ -45,6 +46,12 @@ RESPONSES = {
                 "local museum"),
         binding("Q999999", "Q999999", "Point(-1.0 52.0)", "item with no label"),
     ],
+    "landmark-trust": [
+        binding("Q5193057", "Culloden Tower", "Point(-1.7396 54.4030)",
+                "1746 folly in North Yorkshire, England, UK"),
+        binding("Q17582872", "Egyptian House", "Point(-5.5378 50.1190)",
+                "Grade I listed house in Penzance, Cornwall, England, UK"),
+    ],
 }
 
 
@@ -62,6 +69,7 @@ class FakeFetcher:
         self.requests.append(url)
         for key, marker in (("national-trust", "Q333515"),
                             ("english-heritage", "Q936287"),
+                            ("landmark-trust", "Q2689124"),
                             ("gardens", "Q1107656"),
                             ("museums", "Q33506")):
             if marker in url:
@@ -108,6 +116,20 @@ class WikidataTest(unittest.TestCase):
         stonehenge_url = self.db.execute(
             "SELECT url FROM destinations WHERE name = 'Stonehenge'").fetchone()[0]
         self.assertIn("wikidata.org", stonehenge_url)
+
+    def test_landmark_trust_asks_by_ownership_not_operator(self):
+        # P137 alone finds 4 of these buildings and P127 finds 25, so the
+        # National Trust's operator question would return almost nothing.
+        fetcher = FakeFetcher()
+        run_source(self.db, fetcher, Wikidata())
+
+        query = next(u for u in fetcher.requests if "Q2689124" in u)
+        self.assertIn("P127", unquote(query))
+
+        rows = dict(self.db.execute(
+            "SELECT name, category FROM destinations").fetchall())
+        self.assertEqual(rows["Culloden Tower"], "historic-house")
+        self.assertEqual(rows["Egyptian House"], "historic-house")
 
     def test_failed_query_does_not_end_the_run(self):
         class OneBadQuery(FakeFetcher):
