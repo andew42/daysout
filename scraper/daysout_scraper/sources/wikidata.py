@@ -27,7 +27,6 @@ ENDPOINT = "https://query.wikidata.org/sparql"
 #   Q145      United Kingdom          Q333515  National Trust
 #   Q936287   English Heritage        Q1107656 garden
 #   Q167346   botanical garden        Q33506   museum
-#   Q2689124  Landmark Trust
 BASE = """
 SELECT ?item ?itemLabel ?itemDescription ?coord ?postcode ?website WHERE {
   %s
@@ -44,13 +43,6 @@ QUERIES = [
      "?item wdt:P137 wd:Q333515 ; wdt:P625 ?coord ."),
     ("english-heritage", None,
      "?item wdt:P137 wd:Q936287 ; wdt:P625 ?coord ."),
-    # Landmark Trust buildings are linked by *ownership*, not operator:
-    # measured 20 Sep 2026, P137 finds 4 and P127 finds 25, so asking the
-    # National Trust's question here would return almost nothing. The union
-    # is 29 with coordinates. Their own site cannot supply these — see the
-    # note in CLAUDE.md — so Wikidata is the whole of what we know.
-    ("landmark-trust", None,
-     "?item (wdt:P137|wdt:P127) wd:Q2689124 ; wdt:P625 ?coord ."),
     ("gardens", "garden",
      "VALUES ?type { wd:Q1107656 wd:Q167346 }\n"
      "  ?item wdt:P31 ?type ; wdt:P17 wd:Q145 ; wdt:P625 ?coord ."),

@@ -9,10 +9,7 @@ and rows added without that investigation reported an empty site for
 ever. What survived from the table is here, written in code.
 
 Wikidata supplies destinations (CC0 open data, one query per category),
-National Trust and Landmark Trust properties among them — the latter
-asked by ownership rather than operator, and only from here because
-landmarktrust.org.uk answers every content path with a Cloudflare
-challenge; English Heritage's own site
+National Trust properties among them; English Heritage's own site
 supplies its properties and is the route to its event listings. Historic
 Houses supplies the privately owned houses both of the big charities
 leave out. Shuttleworth and Lamport Hall are single venues whose pages
